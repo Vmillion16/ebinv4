@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
+const nodemailer = require('nodemailer');
 
 const app = express();
 app.use(cors({ origin: 'http://localhost:3000', credentials: true }));
@@ -19,33 +20,54 @@ mongoose.connect(process.env.MONGODB_URI)
 
 const SECRET_KEY = process.env.JWT_SECRET || 'ebin-secret-2026';
 
+// Email transporter
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
+  }
+});
+
+transporter.verify((error, success) => {
+  if (error) {
+    console.error('EMAIL CONFIG ERROR:', error);
+  } else {
+    console.log('✅ Email server is ready');
+  }
+});
+
 // Schemas
 const userSchema = new mongoose.Schema({
   full_name: { type: String, required: true },
   username: { type: String, unique: true, required: true },
+  email: { type: String, unique: true, required: true },
   password: { type: String, required: true },
-  role: { 
-    type: String, 
-    enum: ['Administrator', 'Utility Staff', 'Maintenance Personnel'], 
-    required: true 
+  role: {
+    type: String,
+    enum: ['Administrator', 'Utility Staff', 'Maintenance Personnel'],
+    required: true,
+    default: 'Utility Staff'
   },
-  email: String,
-  account_status: { type: String, default: 'Active' }
+  account_status: { type: String, default: 'Active' },
+
+  otp: { type: String, default: null },
+  otpExpiry: { type: Date, default: null }
 });
 
 const binSchema = new mongoose.Schema({
   bin_name: { type: String, required: true },
   location: { type: String, required: true },
-  bin_type: { 
-    type: String, 
+  bin_type: {
+    type: String,
     enum: ['Recyclable', 'Non-Recyclable', 'General'],
-    required: true 
+    required: true
   },
   installation_area: String,
-  status: { 
-    type: String, 
-    enum: ['Active', 'Full', 'Empty', 'Maintenance'], 
-    default: 'Active' 
+  status: {
+    type: String,
+    enum: ['Active', 'Full', 'Empty', 'Maintenance'],
+    default: 'Active'
   },
   current_fill_level: { type: Number, default: 0 },
   max_capacity: { type: Number, default: 100 }
@@ -63,16 +85,16 @@ async function seedData() {
         {
           full_name: 'Eriza Enriquez-Santos',
           username: 'admin',
+          email: 'admin@pdm.edu.ph',
           password: await bcrypt.hash('password', 10),
-          role: 'Administrator',
-          email: 'admin@pdm.edu.ph'
+          role: 'Administrator'
         },
         {
           full_name: 'Jimmy Capalad',
           username: 'staff',
+          email: 'staff@pdm.edu.ph',
           password: await bcrypt.hash('password', 10),
-          role: 'Utility Staff',
-          email: 'staff@pdm.edu.ph'
+          role: 'Utility Staff'
         }
       ]);
       console.log('✅ Users seeded (admin/staff : password)');
@@ -81,33 +103,33 @@ async function seedData() {
     const binCount = await Bin.countDocuments();
     if (binCount === 0) {
       await Bin.insertMany([
-        { 
-          bin_name: 'Bin-A101', 
-          location: 'Building A Room 101', 
-          bin_type: 'Recyclable', 
-          status: 'Active', 
-          current_fill_level: 45.5 
+        {
+          bin_name: 'Bin-A101',
+          location: 'Building A Room 101',
+          bin_type: 'Recyclable',
+          status: 'Active',
+          current_fill_level: 45.5
         },
-        { 
-          bin_name: 'Bin-Hall1', 
-          location: 'Building A Hallway', 
-          bin_type: 'Non-Recyclable', 
-          status: 'Full', 
-          current_fill_level: 92.3 
+        {
+          bin_name: 'Bin-Hall1',
+          location: 'Building A Hallway',
+          bin_type: 'Non-Recyclable',
+          status: 'Full',
+          current_fill_level: 92.3
         },
-        { 
-          bin_name: 'Bin-Caf1', 
-          location: 'Building B Cafeteria', 
-          bin_type: 'General', 
-          status: 'Active', 
-          current_fill_level: 23.1 
+        {
+          bin_name: 'Bin-Caf1',
+          location: 'Building B Cafeteria',
+          bin_type: 'General',
+          status: 'Active',
+          current_fill_level: 23.1
         },
-        { 
-          bin_name: 'Bin-Admin', 
-          location: 'Administration Office', 
-          bin_type: 'Recyclable', 
-          status: 'Maintenance', 
-          current_fill_level: 78.9 
+        {
+          bin_name: 'Bin-Admin',
+          location: 'Administration Office',
+          bin_type: 'Recyclable',
+          status: 'Maintenance',
+          current_fill_level: 78.9
         }
       ]);
       console.log('✅ 4 sample bins created');
@@ -121,11 +143,11 @@ async function seedData() {
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
-  
+
   if (!token) {
     return res.status(401).json({ error: 'Access token required' });
   }
-  
+
   jwt.verify(token, SECRET_KEY, (err, user) => {
     if (err) return res.status(403).json({ error: 'Invalid token' });
     req.user = user;
@@ -133,40 +155,224 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
+// Helper
+const generateOtp = () => {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+};
+
 // Routes
 app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
+  res.json({
+    status: 'OK',
     database: 'MongoDB Atlas ✅',
     timestamp: new Date().toISOString()
   });
 });
 
+// Optional test route
+app.get('/api/test-email', async (req, res) => {
+  try {
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: process.env.EMAIL_USER,
+      subject: 'Test Email',
+      text: 'If you received this, email setup is working.'
+    });
+
+    res.json({ message: 'Test email sent successfully' });
+  } catch (error) {
+    console.error('TEST EMAIL ERROR:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// REGISTER
+app.post('/api/register', async (req, res) => {
+  try {
+    const { username, email, password } = req.body;
+
+    if (!username || !email || !password) {
+      return res.status(400).json({ error: 'All fields are required' });
+    }
+
+    const existingUser = await User.findOne({
+      $or: [
+        { username: username.trim() },
+        { email: email.trim().toLowerCase() }
+      ]
+    });
+
+    if (existingUser) {
+      return res.status(400).json({ error: 'Username or email already exists' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const newUser = new User({
+      full_name: username.trim(),
+      username: username.trim(),
+      email: email.trim().toLowerCase(),
+      password: hashedPassword,
+      role: 'Utility Staff',
+      account_status: 'Active'
+    });
+
+    await newUser.save();
+
+    res.status(201).json({ message: 'User registered successfully' });
+  } catch (error) {
+    console.error('REGISTER ERROR:', error);
+    res.status(500).json({ error: error.message || 'Server error' });
+  }
+});
+
+// LOGIN
 app.post('/api/login', async (req, res) => {
   try {
     const { username, password } = req.body;
     const user = await User.findOne({ username });
-    
+
     if (!user || !(await bcrypt.compare(password, user.password))) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-    
+
     const token = jwt.sign(
       { userId: user._id, role: user.role },
       SECRET_KEY,
       { expiresIn: '24h' }
     );
-    
+
     res.json({
       token,
       user: {
         id: user._id,
         fullName: user.full_name,
+        email: user.email,
         role: user.role
       }
     });
   } catch (error) {
+    console.error('LOGIN ERROR:', error);
     res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// FORGOT PASSWORD
+app.post('/api/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+
+    const user = await User.findOne({ email: email.trim().toLowerCase() });
+
+    if (!user) {
+      return res.status(404).json({ error: 'Email not found' });
+    }
+
+    const otp = generateOtp();
+    const otpExpiry = new Date(Date.now() + 5 * 60 * 1000);
+
+    user.otp = otp;
+    user.otpExpiry = otpExpiry;
+    await user.save();
+
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: user.email,
+      subject: 'E-Bin Password Reset OTP',
+      html: `
+        <div style="font-family: Arial, sans-serif; padding: 20px;">
+          <h2>E-Bin Password Reset</h2>
+          <p>Your OTP code is:</p>
+          <h1 style="letter-spacing: 4px;">${otp}</h1>
+          <p>This code will expire in 5 minutes.</p>
+        </div>
+      `
+    });
+
+    res.json({ message: 'OTP sent to your email' });
+  } catch (error) {
+    console.error('FORGOT PASSWORD ERROR:', error);
+    res.status(500).json({ error: error.message || 'Failed to send OTP' });
+  }
+});
+
+// VERIFY OTP
+app.post('/api/verify-otp', async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+
+    if (!email || !otp) {
+      return res.status(400).json({ error: 'Email and OTP are required' });
+    }
+
+    const user = await User.findOne({ email: email.trim().toLowerCase() });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (!user.otp || !user.otpExpiry) {
+      return res.status(400).json({ error: 'No OTP request found' });
+    }
+
+    if (user.otp !== otp.trim()) {
+      return res.status(400).json({ error: 'Invalid OTP' });
+    }
+
+    if (new Date() > user.otpExpiry) {
+      return res.status(400).json({ error: 'OTP has expired' });
+    }
+
+    res.json({ message: 'OTP verified successfully' });
+  } catch (error) {
+    console.error('VERIFY OTP ERROR:', error);
+    res.status(500).json({ error: error.message || 'Failed to verify OTP' });
+  }
+});
+
+// RESET PASSWORD
+app.post('/api/reset-password', async (req, res) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+
+    if (!email || !otp || !newPassword) {
+      return res.status(400).json({ error: 'Email, OTP, and new password are required' });
+    }
+
+    const user = await User.findOne({ email: email.trim().toLowerCase() });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (!user.otp || !user.otpExpiry) {
+      return res.status(400).json({ error: 'No OTP request found' });
+    }
+
+    if (user.otp !== otp.trim()) {
+      return res.status(400).json({ error: 'Invalid OTP' });
+    }
+
+    if (new Date() > user.otpExpiry) {
+      return res.status(400).json({ error: 'OTP has expired' });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    user.password = hashedPassword;
+    user.otp = null;
+    user.otpExpiry = null;
+
+    await user.save();
+
+    res.json({ message: 'Password reset successfully' });
+  } catch (error) {
+    console.error('RESET PASSWORD ERROR:', error);
+    res.status(500).json({ error: error.message || 'Failed to reset password' });
   }
 });
 
@@ -176,11 +382,11 @@ app.get('/api/dashboard', authenticateToken, async (req, res) => {
       Bin.countDocuments(),
       Bin.countDocuments({ status: 'Full' })
     ]);
-    
+
     res.json({
       totalBins,
       fullBins,
-      activeAlerts: 2, // Demo
+      activeAlerts: 2,
       totalWasteToday: 45.2
     });
   } catch (error) {

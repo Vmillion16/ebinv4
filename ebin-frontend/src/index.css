@@ -866,3 +866,59 @@ body {
   color: #56ab2f;
   margin-bottom: 0.5rem;
 }
+
+.register-text {
+  margin-top: 15px;
+  text-align: center;
+  font-size: 14px;
+}
+
+.register-link {
+  color: #4CAF50;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.register-link:hover {
+  text-decoration: underline;
+}
+
+
+.success {
+  margin-top: 15px;
+  padding: 12px;
+  border-radius: 10px;
+  background: #e8f5e9;
+  color: #2e7d32;
+  text-align: center;
+  font-size: 14px;
+}
+
+.password-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-wrapper input {
+  width: 100%;
+  padding-right: 40px;
+}
+
+.toggle-password {
+  position: absolute;
+  right: 12px;
+  cursor: pointer;
+  font-size: 16px;
+  user-select: none;
+}
+
+.success {
+  margin-top: 15px;
+  padding: 12px;
+  border-radius: 10px;
+  background: #e8f5e9;
+  color: #2e7d32;
+  text-align: center;
+  font-size: 14px;
+}

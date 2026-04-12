@@ -10,75 +10,123 @@ import Settings from './Settings';
 
 const Dashboard = ({ user, onLogout }) => {
   const [activeTab, setActiveTab] = useState('overview');
-  const [dashboardData, setDashboardData] = useState({});
+  const [dashboardData, setDashboardData] = useState(null);
   const [bins, setBins] = useState([]);
-  const [alerts, setAlerts] = useState([]);
-  const [reports, setReports] = useState([]);
+  const [dashboardLoading, setDashboardLoading] = useState(true);
+  const [binsLoading, setBinsLoading] = useState(true);
 
-  const fetchData = async () => {
+  const token = localStorage.getItem('token');
+
+  const fetchDashboard = async () => {
     try {
-      const config = {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-      };
-      
-      const [dashboardRes, binsRes, alertsRes, reportsRes] = await Promise.all([
-        axios.get('http://localhost:5000/api/dashboard', config),
-        axios.get('http://localhost:5000/api/bins', config),
-        axios.get('http://localhost:5000/api/alerts', config),
-        axios.get('http://localhost:5000/api/reports/daily', config)
-      ]);
-      
-      setDashboardData(dashboardRes.data);
-      setBins(binsRes.data);
-      setAlerts(alertsRes.data);
-      setReports(reportsRes.data);
+      const response = await axios.get('http://localhost:5000/api/dashboard', {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      setDashboardData(response.data);
     } catch (error) {
-      console.error('Error fetching data:', error);
+      console.error('Failed to fetch dashboard:', error);
+    } finally {
+      setDashboardLoading(false);
+    }
+  };
+
+  const fetchBins = async () => {
+    try {
+      const response = await axios.get('http://localhost:5000/api/bins', {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      setBins(response.data);
+    } catch (error) {
+      console.error('Failed to fetch bins:', error);
+    } finally {
+      setBinsLoading(false);
+    }
+  };
+
+  const handleResetBin = async (binId) => {
+    try {
+      await axios.put(
+        `http://localhost:5000/api/bins/${binId}/reset`,
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      );
+
+      alert('Bin reset successfully!');
+      fetchBins();
+      fetchDashboard();
+    } catch (error) {
+      console.error('Failed to reset bin:', error);
+      alert('Failed to reset bin');
     }
   };
 
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 30000); // Refresh every 30 seconds
+    fetchDashboard();
+    fetchBins();
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchDashboard();
+      fetchBins();
+    }, 30000);
+
     return () => clearInterval(interval);
   }, []);
 
-  const markAlertRead = async (alertId) => {
-    try {
-      await axios.put(`http://localhost:5000/api/alerts/${alertId}/read`, {}, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-      });
-      setAlerts(alerts.filter(alert => alert.alert_id !== alertId));
-    } catch (error) {
-      console.error('Error marking alert as read');
-    }
-  };
-
-  const resetBin = async (binId) => {
-    try {
-      await axios.put(`http://localhost:5000/api/bins/${binId}/reset`, {}, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-      });
-      fetchData(); // Refresh data
-    } catch (error) {
-      console.error('Error resetting bin');
-    }
-  };
+  if (dashboardLoading) {
+    return (
+      <div className="dashboard">
+        <Sidebar
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          user={user}
+          onLogout={onLogout}
+        />
+        <div className="main-content" style={{ padding: '20px' }}>
+          <h2>Loading...</h2>
+        </div>
+      </div>
+    );
+  }
 
   const renderContent = () => {
+    const loading = binsLoading || dashboardLoading;
+
     switch (activeTab) {
       case 'overview':
         return <DashboardOverview data={dashboardData} />;
+
       case 'bins':
-        return <BinMonitoring bins={bins} onResetBin={resetBin} />;
+        return (
+          <BinMonitoring
+            bins={bins}
+            onResetBin={handleResetBin}
+            isLoading={loading}
+            refetch={fetchBins}
+          />
+        );
+
       case 'alerts':
-        return <Alerts alerts={alerts} onMarkRead={markAlertRead} />;
+        return <Alerts alerts={[]} onMarkRead={() => {}} />;
+
       case 'segregation':
         return <WasteSegregation bins={bins} />;
+
       case 'reports':
-        return <Reports reports={reports} />;
+        return <Reports reports={[]} />;
+
       case 'settings':
         return <Settings />;
+
       default:
         return <DashboardOverview data={dashboardData} />;
     }
@@ -86,16 +134,33 @@ const Dashboard = ({ user, onLogout }) => {
 
   return (
     <div className="dashboard">
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} user={user} onLogout={onLogout} />
+      <Sidebar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        user={user}
+        onLogout={onLogout}
+      />
+
       <div className="main-content">
         <header className="header">
-          <h1>E-Bin Dashboard</h1>
+          <div className="header-left">
+            <h1>E-Bin Dashboard</h1>
+            <span className="last-sync">
+              Last sync: {new Date().toLocaleTimeString()}
+            </span>
+          </div>
+
           <div className="user-info">
-            <span>{user?.fullName}</span>
-            <span className="role">{user?.role}</span>
+            <span className="user-name">{user?.fullName}</span>
+            <span className={`role-badge role-${user?.role?.toLowerCase().replace(/\s+/g, '-')}`}>
+              {user?.role}
+            </span>
           </div>
         </header>
-        <main>{renderContent()}</main>
+
+        <main className="content">
+          {renderContent()}
+        </main>
       </div>
     </div>
   );

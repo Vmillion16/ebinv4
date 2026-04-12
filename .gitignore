@@ -1,11 +1,17 @@
-# Backend dependencies
+# Dependencies
+node_modules/
 ebin-backend/node_modules/
-
-# Frontend dependencies
 ebin-frontend/node_modules/
+
+# Environment variables (IMPORTANT)
+.env
+*.env
 
 # Logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
 # OS files
 .DS_Store
@@ -14,3 +20,10 @@ Thumbs.db
 # Build folders
 dist/
 build/
+
+# React specific
+ebin-frontend/build/
+
+# Misc
+.vscode/
+.idea/
