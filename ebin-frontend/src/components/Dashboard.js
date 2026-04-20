@@ -6,6 +6,8 @@ import BinMonitoring from './BinMonitoring';
 import WasteSegregation from './WasteSegregation';
 import Reports from './Reports';
 import Settings from './Settings';
+import CollectionReward from './CollectionReward';
+import Maintenance from './Maintenance';
 
 const Dashboard = ({ user, onLogout }) => {
   const [activeTab, setActiveTab] = useState('overview');
@@ -57,7 +59,6 @@ const Dashboard = ({ user, onLogout }) => {
           }
         }
       );
-
       alert('Bin reset successfully!');
       fetchBins();
       fetchDashboard();
@@ -98,8 +99,6 @@ const Dashboard = ({ user, onLogout }) => {
   }
 
   const renderContent = () => {
-    const loading = binsLoading || dashboardLoading;
-
     switch (activeTab) {
       case 'overview':
         return <DashboardOverview data={dashboardData} />;
@@ -109,11 +108,10 @@ const Dashboard = ({ user, onLogout }) => {
           <BinMonitoring
             bins={bins}
             onResetBin={handleResetBin}
-            isLoading={loading}
+            isLoading={binsLoading}
             refetch={fetchBins}
           />
         );
-
 
       case 'segregation':
         return <WasteSegregation bins={bins} />;
@@ -123,6 +121,12 @@ const Dashboard = ({ user, onLogout }) => {
 
       case 'settings':
         return <Settings />;
+
+      case 'collectionreward':         // ✅ FIXED
+        return <CollectionReward />;
+
+      case 'maintenance':              // ✅ FIXED
+        return <Maintenance />;
 
       default:
         return <DashboardOverview data={dashboardData} />;

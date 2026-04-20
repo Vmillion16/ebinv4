@@ -1,41 +1,60 @@
 import React, { useEffect, useState } from 'react';
+import "./sidebar.css"
+import { NavLink } from 'react-router-dom';
 import {
   FaTachometerAlt,
   FaTrash,
   FaRecycle,
   FaChartBar,
   FaCog,
-  FaSignOutAlt
+  FaSignOutAlt,
+  FaGift,
+  FaWrench
 } from 'react-icons/fa';
-import '../index.css';
 
 const Sidebar = ({ activeTab, setActiveTab, user, onLogout }) => {
   const [showSidebar, setShowSidebar] = useState(false);
 
   const menuItems = [
-    { id: 'overview', label: 'Overview', icon: FaTachometerAlt },
-    { id: 'bins', label: 'Bin Monitoring', icon: FaTrash },
-    { id: 'segregation', label: 'Waste Segregation', icon: FaRecycle },
-    { id: 'reports', label: 'Reports', icon: FaChartBar },
-    { id: 'settings', label: 'Settings', icon: FaCog }
+    { id: 'overview',         label: 'Overview',            icon: FaTachometerAlt, path: '/dashboard/overview' },
+    { id: 'bins',             label: 'Bin Monitoring',      icon: FaTrash,         path: '/dashboard/bins' },
+    { id: 'segregation',      label: 'Waste Segregation',   icon: FaRecycle,       path: '/dashboard/segregation' },
+    { id: 'reports',          label: 'Reports',             icon: FaChartBar,      path: '/dashboard/reports' },
+    { id: 'collectionreward', label: 'Collection & Reward', icon: FaGift,          path: '/dashboard/collectionreward' },
+    { id: 'maintenance',      label: 'Maintenance',         icon: FaWrench,        path: '/dashboard/maintenance' },
+    { id: 'settings',         label: 'Settings',            icon: FaCog,           path: '/dashboard/settings' },
   ];
+
+  const topItems    = menuItems.slice(0, 3); // Overview, Bin Monitoring, Waste Segregation
+  const middleItems = menuItems.slice(3, 6); // Reports, Collection & Reward, Maintenance
+  const bottomItems = menuItems.slice(6);    // Settings
 
   useEffect(() => {
     const handleMouseMove = (e) => {
-      // show sidebar if cursor is near the left side
       if (e.clientX <= 40) {
         setShowSidebar(true);
       } else if (e.clientX > 260) {
         setShowSidebar(false);
       }
     };
-
     window.addEventListener('mousemove', handleMouseMove);
-
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-    };
+    return () => window.removeEventListener('mousemove', handleMouseMove);
   }, []);
+
+  const renderNavItem = (item) => {
+    const Icon = item.icon;
+    return (
+      <NavLink
+        key={item.id}
+        to={item.path}
+        className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+        onClick={() => setActiveTab(item.id)}
+      >
+        <Icon className="nav-icon" />
+        <span>{item.label}</span>
+      </NavLink>
+    );
+  };
 
   return (
     <div
@@ -49,19 +68,11 @@ const Sidebar = ({ activeTab, setActiveTab, user, onLogout }) => {
       </div>
 
       <nav className="sidebar-nav">
-        {menuItems.map((item) => {
-          const Icon = item.icon;
-          return (
-            <button
-              key={item.id}
-              className={`nav-item ${activeTab === item.id ? 'active' : ''}`}
-              onClick={() => setActiveTab(item.id)}
-            >
-              <Icon className="nav-icon" />
-              <span>{item.label}</span>
-            </button>
-          );
-        })}
+        {topItems.map(renderNavItem)}
+        <div className="nav-divider" />
+        {middleItems.map(renderNavItem)}
+        <div className="nav-divider" />
+        {bottomItems.map(renderNavItem)}
       </nav>
 
       <div className="sidebar-footer">

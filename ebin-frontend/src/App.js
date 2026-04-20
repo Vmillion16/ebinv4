@@ -96,6 +96,9 @@ function App() {
             }
           />
 
+          {/* ✅ REMOVED: /collection-reward and /maintenance orphan routes
+              These are now handled inside Dashboard via activeTab switch */}
+
           <Route
             path="/"
             element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} />}

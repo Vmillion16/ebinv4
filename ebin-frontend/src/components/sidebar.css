@@ -1,0 +1,132 @@
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: -250px;
+  width: 240px;
+  height: 100vh;
+  background: #1a3a2a;
+  color: white;
+  display: flex;
+  flex-direction: column;
+  padding: 2rem 0;
+  transition: left 0.35s ease, opacity 0.35s ease;
+  opacity: 0.95;
+  z-index: 1000;
+  box-shadow: none;
+}
+
+.sidebar.show {
+  left: 0;
+  opacity: 1;
+}
+
+.sidebar-header {
+  padding: 0 1.5rem 1.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: left;
+}
+
+.sidebar-header h3 {
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: #6ecf8a;
+  letter-spacing: 0.01em;
+  margin: 0 0 3px 0;
+  background: none;
+  -webkit-text-fill-color: unset;
+}
+
+.sidebar-header p {
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.35);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.sidebar-nav {
+  padding: 1.25rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  overflow-y: auto;
+  margin-top: 0;
+}
+
+.nav-item {
+  width: 100%;
+  padding: 0.65rem 1rem;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.6);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 400;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  text-align: left;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.nav-icon {
+  width: 15px;
+  height: 15px;
+  font-size: 15px;
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+.nav-item:hover {
+  background: rgba(110, 207, 138, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.nav-item:hover .nav-icon {
+  opacity: 0.9;
+}
+
+.nav-item.active {
+  background: rgba(110, 207, 138, 0.15);
+  color: #6ecf8a;
+}
+
+.nav-item.active .nav-icon {
+  opacity: 1;
+}
+
+.nav-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.07);
+  margin: 0.4rem 0.5rem;
+}
+
+.sidebar-footer {
+  padding: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.logout-btn {
+  width: 100%;
+  padding: 0.65rem 1rem;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.4);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 400;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  text-align: left;
+}
+
+.logout-btn:hover {
+  background: rgba(220, 80, 70, 0.12);
+  color: #e07070;
+}
