@@ -9,6 +9,8 @@ import Settings from './Settings';
 import CollectionReward from './CollectionReward';
 import Maintenance from './Maintenance';
 
+const API_BASE = import.meta.env.VITE_API_URL || 'https://ebinv4-1.onrender.com/api';
+
 const Dashboard = ({ user, onLogout }) => {
   const [activeTab, setActiveTab] = useState('overview');
   const [dashboardData, setDashboardData] = useState(null);
@@ -20,7 +22,7 @@ const Dashboard = ({ user, onLogout }) => {
 
   const fetchDashboard = async () => {
     try {
-      const response = await axios.get('http://localhost:5000/api/dashboard', {
+      const response = await axios.get(`${API_BASE}/dashboard`, {
         headers: {
           Authorization: `Bearer ${token}`
         }
@@ -35,7 +37,7 @@ const Dashboard = ({ user, onLogout }) => {
 
   const fetchBins = async () => {
     try {
-      const response = await axios.get('http://localhost:5000/api/bins', {
+      const response = await axios.get(`${API_BASE}/bins`, {
         headers: {
           Authorization: `Bearer ${token}`
         }
@@ -51,7 +53,7 @@ const Dashboard = ({ user, onLogout }) => {
   const handleResetBin = async (binId) => {
     try {
       await axios.put(
-        `http://localhost:5000/api/bins/${binId}/reset`,
+        `${API_BASE}/bins/${binId}/reset`,
         {},
         {
           headers: {
@@ -122,10 +124,10 @@ const Dashboard = ({ user, onLogout }) => {
       case 'settings':
         return <Settings />;
 
-      case 'collectionreward':         // ✅ FIXED
+      case 'collectionreward':
         return <CollectionReward />;
 
-      case 'maintenance':              // ✅ FIXED
+      case 'maintenance':
         return <Maintenance />;
 
       default:
