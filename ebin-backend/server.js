@@ -23,8 +23,24 @@ app.use((req, res, next) => {
   next();
 });
 
+// ✅ UPDATED: Added your Firebase frontend URL to allowed origins
+const allowedOrigins = [
+  'https://ebinv4-1.web.app',         // Firebase default domain
+  'https://ebinv4-1.firebaseapp.com', // Firebase alternate domain
+  'http://localhost:3000',            // Local React dev
+  'http://localhost:5173',            // Local Vite dev
+  'http://localhost:5000'             // Local backend dev
+];
+
 app.use(cors({
-  origin: true,
+  origin: function (origin, callback) {
+    // Allow requests with no origin (mobile apps, curl, Postman)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
