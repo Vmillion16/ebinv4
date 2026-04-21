@@ -8,6 +8,7 @@ import {
   FaRecycle,
 } from 'react-icons/fa';
 import './Login.css';
+import API_URL from '../config';
 
 const Login = ({ onLogin }) => {
   const [credentials, setCredentials] = useState({
@@ -31,7 +32,7 @@ const Login = ({ onLogin }) => {
       setLoading(true);
       setError('');
 
-      const response = await axios.post('http://localhost:5000/api/login', {
+      const response = await axios.post(`${API_URL}/api/login`, {
         username: credentials.username.trim(),
         password: credentials.password
       });
