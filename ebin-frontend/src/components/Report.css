@@ -1,0 +1,251 @@
+/* ── Page ─────────────────────────────────────────────────────────────────── */
+.rp-page {
+  padding: 24px;
+  background: #f5f5f5;
+  min-height: 100vh;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────────── */
+.rp-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.rp-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin: 0;
+}
+
+.rp-sub {
+  font-size: 13px;
+  color: #6b7280;
+  margin: 4px 0 0;
+}
+
+.rp-export-btn {
+  font-size: 13px;
+  font-weight: 500;
+  padding: 8px 16px;
+  background: #1a3a2a;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+
+.rp-export-btn:hover { background: #0f6e56; }
+
+/* ── Metrics ─────────────────────────────────────────────────────────────── */
+.rp-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 900px) { .rp-metrics { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 500px) { .rp-metrics { grid-template-columns: 1fr; } }
+
+.rp-metric {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.rp-metric-label {
+  font-size: 12px;
+  color: #6b7280;
+  margin: 0;
+}
+
+.rp-metric-value {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 4px 0 0;
+  letter-spacing: -0.5px;
+}
+
+.rp-metric-sub {
+  font-size: 11px;
+  color: #9ca3af;
+  margin: 2px 0 0;
+}
+
+/* ── Card ────────────────────────────────────────────────────────────────── */
+.rp-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+
+.rp-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin: 0 0 14px;
+}
+
+.rp-card-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.rp-card-toolbar .rp-card-title { margin: 0; }
+
+/* ── Controls ────────────────────────────────────────────────────────────── */
+.rp-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Segmented buttons */
+.rp-seg {
+  display: flex;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #f9fafb;
+}
+
+.rp-seg-btn {
+  font-size: 12px;
+  padding: 6px 13px;
+  background: transparent;
+  border: none;
+  color: #6b7280;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  font-weight: 400;
+  border-right: 1px solid #e5e7eb;
+}
+
+.rp-seg-btn:last-child { border-right: none; }
+.rp-seg-btn:hover { background: #f3f4f6; color: #374151; }
+
+.rp-seg-active {
+  background: #1a3a2a !important;
+  color: #fff !important;
+  font-weight: 500 !important;
+}
+
+/* ── Tooltip ─────────────────────────────────────────────────────────────── */
+.rp-tooltip {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.rp-tooltip-label {
+  font-weight: 600;
+  color: #1a1a1a;
+  margin: 0 0 6px;
+  font-size: 12px;
+}
+
+.rp-tooltip-row {
+  margin: 3px 0 0;
+  font-size: 12px;
+}
+
+/* ── Table ───────────────────────────────────────────────────────────────── */
+.rp-table-wrap { overflow-x: auto; }
+
+.rp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.rp-table th {
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b7280;
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f9fafb;
+  white-space: nowrap;
+}
+
+.rp-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f3f4f6;
+  color: #1a1a1a;
+  vertical-align: middle;
+}
+
+.rp-table tbody tr:last-child td { border-bottom: none; }
+.rp-table tbody tr:hover td { background: #fafafa; }
+
+.rp-muted { color: #6b7280 !important; font-size: 12px; }
+
+/* Dot indicator */
+.rp-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+  margin-bottom: 1px;
+}
+
+/* Rate bar */
+.rp-rate-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rp-rate-bg {
+  flex: 1;
+  background: #f3f4f6;
+  border-radius: 4px;
+  height: 6px;
+  overflow: hidden;
+  min-width: 60px;
+}
+
+.rp-rate-fill {
+  height: 6px;
+  border-radius: 4px;
+  background: #1D9E75;
+  transition: width 0.4s ease;
+}
+
+.rp-rate-pct {
+  font-size: 12px;
+  font-weight: 500;
+  color: #1D9E75;
+  min-width: 32px;
+  text-align: right;
+}
+
+/* Footer row */
+.rp-tfoot td {
+  padding: 10px 12px;
+  border-top: 1px solid #e5e7eb;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1a1a1a;
+  background: #f9fafb;
+}

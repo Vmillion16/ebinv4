@@ -1,0 +1,341 @@
+/* ── Container ───────────────────────────────────────────────────────────── */
+.do-container {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ── Loading ─────────────────────────────────────────────────────────────── */
+.do-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 60px 20px;
+  color: #9ca3af;
+  font-size: 13px;
+}
+
+.do-loading-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #1D9E75;
+  animation: do-bounce 1.2s infinite;
+}
+
+.do-loading-dot:nth-child(2) { animation-delay: 0.2s; }
+.do-loading-dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes do-bounce {
+  0%, 80%, 100% { transform: scale(0.7); opacity: 0.5; }
+  40%           { transform: scale(1);   opacity: 1; }
+}
+
+/* ── KPI row ─────────────────────────────────────────────────────────────── */
+.do-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 900px) { .do-kpis { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 480px) { .do-kpis { grid-template-columns: 1fr; } }
+
+.do-kpi {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.do-kpi-label {
+  font-size: 12px;
+  color: #6b7280;
+  margin: 0;
+}
+
+.do-kpi-value {
+  font-size: 28px;
+  font-weight: 700;
+  margin: 4px 0 0;
+  letter-spacing: -0.5px;
+  line-height: 1;
+}
+
+.do-kpi-sub {
+  font-size: 11px;
+  color: #9ca3af;
+  margin: 4px 0 0;
+}
+
+/* ── Card base ───────────────────────────────────────────────────────────── */
+.do-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.do-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin: 0 0 14px;
+}
+
+.do-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ── Chart row ───────────────────────────────────────────────────────────── */
+.do-chart-row {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 14px;
+}
+
+@media (max-width: 850px) { .do-chart-row { grid-template-columns: 1fr; } }
+
+.do-card-wide { flex: 1; }
+
+/* ── Bottom row ──────────────────────────────────────────────────────────── */
+.do-bottom-row {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 14px;
+}
+
+@media (max-width: 850px) { .do-bottom-row { grid-template-columns: 1fr; } }
+
+/* ── Tooltip ─────────────────────────────────────────────────────────────── */
+.do-tooltip {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 9px 13px;
+  font-size: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.do-tooltip-label {
+  font-weight: 600;
+  color: #1a1a1a;
+  margin: 0 0 3px;
+}
+
+.do-tooltip-val {
+  color: #6b7280;
+  margin: 0;
+}
+
+/* ── Badges ──────────────────────────────────────────────────────────────── */
+.do-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: 20px;
+}
+
+.do-badge-ok   { background: #dcfce7; color: #15803d; }
+.do-badge-warn { background: #fef3c7; color: #b45309; }
+
+/* ── Priority bins ───────────────────────────────────────────────────────── */
+.do-all-ok {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px;
+  background: #f0fdf9;
+  border: 1px solid #9FE1CB;
+  border-radius: 8px;
+}
+
+.do-ok-icon {
+  font-size: 16px;
+  color: #1D9E75;
+  font-weight: 700;
+}
+
+.do-all-ok p {
+  font-size: 13px;
+  color: #0F6E56;
+  margin: 0;
+}
+
+.do-priority-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.do-priority-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: #f9fafb;
+  border: 1px solid #f3f4f6;
+  border-radius: 8px;
+  transition: background 0.12s;
+}
+
+.do-priority-row:hover { background: #f3f4f6; }
+
+.do-priority-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 180px;
+}
+
+.do-priority-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  min-width: 8px;
+}
+
+.do-priority-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1a1a1a;
+}
+
+.do-priority-type {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.do-priority-center {
+  flex: 1;
+}
+
+.do-fill-bar-bg {
+  height: 7px;
+  background: #e5e7eb;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.do-fill-bar-fill {
+  height: 7px;
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+
+.do-priority-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 110px;
+  justify-content: flex-end;
+}
+
+.do-fill-pct {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1a1a1a;
+  min-width: 38px;
+  text-align: right;
+}
+
+.do-status-tag {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+/* ── Waste breakdown ─────────────────────────────────────────────────────── */
+.do-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.do-breakdown-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.do-breakdown-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 120px;
+}
+
+.do-breakdown-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  min-width: 8px;
+}
+
+.do-breakdown-label {
+  font-size: 12px;
+  color: #374151;
+}
+
+.do-breakdown-bar-bg {
+  flex: 1;
+  background: #f3f4f6;
+  border-radius: 4px;
+  height: 7px;
+  overflow: hidden;
+}
+
+.do-breakdown-bar-fill {
+  height: 7px;
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+
+.do-breakdown-pct {
+  font-size: 12px;
+  font-weight: 500;
+  color: #6b7280;
+  min-width: 34px;
+  text-align: right;
+}
+
+/* Type count tiles */
+.do-type-counts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid #f3f4f6;
+}
+
+.do-type-count {
+  text-align: center;
+  background: #f9fafb;
+  border-radius: 8px;
+  padding: 10px 6px;
+}
+
+.do-type-count-val {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: -0.5px;
+}
+
+.do-type-count-label {
+  font-size: 10px;
+  color: #9ca3af;
+  margin: 3px 0 0;
+}
