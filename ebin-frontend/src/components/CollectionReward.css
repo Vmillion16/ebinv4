@@ -1,9 +1,15 @@
+<<<<<<< HEAD
 /* ── Page shell ─────────────────────────────────────────────── */
+=======
+>>>>>>> 600b0a2610eb359049ef4caf5d18075c13b31af8
 .cr-page {
   padding: 24px;
   background: #f5f5f5;
   min-height: 100vh;
+<<<<<<< HEAD
   font-family: "DM Sans", sans-serif;
+=======
+>>>>>>> 600b0a2610eb359049ef4caf5d18075c13b31af8
 }
 
 .cr-page-header {
@@ -26,9 +32,16 @@
   margin: 4px 0 0;
 }
 
+<<<<<<< HEAD
 /* ── Tabs ────────────────────────────────────────────────────── */
 .cr-tabs {
   display: flex;
+=======
+/* Tabs */
+.cr-tabs {
+  display: flex;
+  gap: 0;
+>>>>>>> 600b0a2610eb359049ef4caf5d18075c13b31af8
   border-bottom: 1px solid #e5e7eb;
   margin-bottom: 20px;
   background: #fff;
@@ -44,12 +57,21 @@
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
+<<<<<<< HEAD
   margin-bottom: -1px; /* sit flush on the border-bottom */
+=======
+>>>>>>> 600b0a2610eb359049ef4caf5d18075c13b31af8
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s;
 }
 
+<<<<<<< HEAD
 .cr-tab:hover { color: #1D9E75; }
+=======
+.cr-tab:hover {
+  color: #1D9E75;
+}
+>>>>>>> 600b0a2610eb359049ef4caf5d18075c13b31af8
 
 .cr-tab-active {
   color: #1D9E75 !important;
@@ -63,10 +85,17 @@
 
 @keyframes cr-fadein {
   from { opacity: 0; transform: translateY(4px); }
+<<<<<<< HEAD
   to   { opacity: 1; transform: translateY(0); }
 }
 
 /* ── Metric cards ────────────────────────────────────────────── */
+=======
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Metrics */
+>>>>>>> 600b0a2610eb359049ef4caf5d18075c13b31af8
 .cr-metrics {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -74,8 +103,14 @@
   margin-bottom: 16px;
 }
 
+<<<<<<< HEAD
 @media (max-width: 900px) { .cr-metrics { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 480px) { .cr-metrics { grid-template-columns: 1fr; } }
+=======
+@media (max-width: 900px) {
+  .cr-metrics { grid-template-columns: repeat(2, 1fr); }
+}
+>>>>>>> 600b0a2610eb359049ef4caf5d18075c13b31af8
 
 .cr-metric {
   background: #fff;
@@ -95,12 +130,16 @@
   font-weight: 600;
   color: #1a1a1a;
   margin: 4px 0 0;
+<<<<<<< HEAD
   line-height: 1.2;
+=======
+>>>>>>> 600b0a2610eb359049ef4caf5d18075c13b31af8
 }
 
 .cr-metric-sub {
   font-size: 11px;
   color: #9ca3af;
+<<<<<<< HEAD
   margin: 4px 0 0;
 }
 
@@ -109,6 +148,16 @@
 .cr-value-danger { color: #dc2626 !important; }
 
 /* ── Notice banner ───────────────────────────────────────────── */
+=======
+  margin: 2px 0 0;
+}
+
+.cr-value-green { color: #1D9E75 !important; }
+.cr-value-warn  { color: #d97706 !important; }
+.cr-value-danger { color: #dc2626 !important; }
+
+/* Notice */
+>>>>>>> 600b0a2610eb359049ef4caf5d18075c13b31af8
 .cr-notice {
   background: #f0fdf9;
   border: 1px solid #9FE1CB;
@@ -119,7 +168,11 @@
   margin-bottom: 16px;
 }
 
+<<<<<<< HEAD
 /* ── Card ────────────────────────────────────────────────────── */
+=======
+/* Card */
+>>>>>>> 600b0a2610eb359049ef4caf5d18075c13b31af8
 .cr-card {
   background: #fff;
   border: 1px solid #e5e7eb;
@@ -128,21 +181,33 @@
   margin-bottom: 14px;
 }
 
+<<<<<<< HEAD
 /* Header row inside a card (title + actions side-by-side) */
+=======
+>>>>>>> 600b0a2610eb359049ef4caf5d18075c13b31af8
 .cr-card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+<<<<<<< HEAD
   flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 12px;
 }
 
 /* Standalone card title (no sibling actions) */
+=======
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+>>>>>>> 600b0a2610eb359049ef4caf5d18075c13b31af8
 .cr-card-title {
   font-size: 13px;
   font-weight: 600;
   color: #1a1a1a;
+<<<<<<< HEAD
   margin: 0 0 12px;   /* bottom gap when title stands alone */
 }
 
@@ -150,6 +215,9 @@
    so flex alignment isn't disrupted */
 .cr-card-header > .cr-card-title {
   margin-bottom: 0;
+=======
+  margin: 0 0 12px;
+>>>>>>> 600b0a2610eb359049ef4caf5d18075c13b31af8
 }
 
 .cr-card-actions {
@@ -159,7 +227,11 @@
   flex-wrap: wrap;
 }
 
+<<<<<<< HEAD
 /* ── Select & Button ─────────────────────────────────────────── */
+=======
+/* Select & Button */
+>>>>>>> 600b0a2610eb359049ef4caf5d18075c13b31af8
 .cr-select {
   font-size: 12px;
   padding: 5px 8px;
@@ -169,11 +241,17 @@
   color: #374151;
   cursor: pointer;
   outline: none;
+<<<<<<< HEAD
   transition: border-color 0.15s;
 }
 
 .cr-select:hover,
 .cr-select:focus { border-color: #1D9E75; }
+=======
+}
+
+.cr-select:hover { border-color: #1D9E75; }
+>>>>>>> 600b0a2610eb359049ef4caf5d18075c13b31af8
 
 .cr-btn-outline {
   font-size: 12px;
@@ -183,8 +261,12 @@
   background: #fff;
   color: #374151;
   cursor: pointer;
+<<<<<<< HEAD
   transition: background 0.15s, border-color 0.15s, color 0.15s;
   white-space: nowrap;
+=======
+  transition: background 0.15s;
+>>>>>>> 600b0a2610eb359049ef4caf5d18075c13b31af8
 }
 
 .cr-btn-outline:hover {
@@ -193,8 +275,15 @@
   color: #1D9E75;
 }
 
+<<<<<<< HEAD
 /* ── Table ───────────────────────────────────────────────────── */
 .cr-table-wrap { overflow-x: auto; }
+=======
+/* Table */
+.cr-table-wrap {
+  overflow-x: auto;
+}
+>>>>>>> 600b0a2610eb359049ef4caf5d18075c13b31af8
 
 .cr-table {
   width: 100%;
@@ -220,10 +309,24 @@
   vertical-align: middle;
 }
 
+<<<<<<< HEAD
 .cr-table tr:last-child td { border-bottom: none; }
 .cr-table tr:hover td { background: #f9fafb; }
 
 .cr-muted  { color: #6b7280 !important; }
+=======
+.cr-table tr:last-child td {
+  border-bottom: none;
+}
+
+.cr-table tr:hover td {
+  background: #f9fafb;
+}
+
+.cr-muted {
+  color: #6b7280 !important;
+}
+>>>>>>> 600b0a2610eb359049ef4caf5d18075c13b31af8
 
 .cr-empty {
   text-align: center;
@@ -232,13 +335,18 @@
   font-size: 13px;
 }
 
+<<<<<<< HEAD
 /* ── Badges ──────────────────────────────────────────────────── */
+=======
+/* Badges */
+>>>>>>> 600b0a2610eb359049ef4caf5d18075c13b31af8
 .badge {
   display: inline-block;
   font-size: 11px;
   font-weight: 500;
   padding: 3px 9px;
   border-radius: 20px;
+<<<<<<< HEAD
   white-space: nowrap;
 }
 
@@ -248,6 +356,16 @@
 .badge-default { background: #f3f4f6; color: #6b7280; }
 
 /* ── Two-column layout ───────────────────────────────────────── */
+=======
+}
+
+.badge-success  { background: #dcfce7; color: #15803d; }
+.badge-warning  { background: #fef3c7; color: #b45309; }
+.badge-danger   { background: #fee2e2; color: #dc2626; }
+.badge-default  { background: #f3f4f6; color: #6b7280; }
+
+/* Two column layout */
+>>>>>>> 600b0a2610eb359049ef4caf5d18075c13b31af8
 .cr-two-col {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -255,9 +373,17 @@
   margin-bottom: 14px;
 }
 
+<<<<<<< HEAD
 @media (max-width: 700px) { .cr-two-col { grid-template-columns: 1fr; } }
 
 /* ── Port rows ───────────────────────────────────────────────── */
+=======
+@media (max-width: 700px) {
+  .cr-two-col { grid-template-columns: 1fr; }
+}
+
+/* Port rows */
+>>>>>>> 600b0a2610eb359049ef4caf5d18075c13b31af8
 .cr-port-row {
   display: flex;
   align-items: center;
@@ -272,7 +398,11 @@
   width: 9px;
   height: 9px;
   border-radius: 50%;
+<<<<<<< HEAD
   flex-shrink: 0;
+=======
+  min-width: 9px;
+>>>>>>> 600b0a2610eb359049ef4caf5d18075c13b31af8
 }
 
 .dot-success { background: #22c55e; }
@@ -283,6 +413,7 @@
   font-size: 13px;
   color: #1a1a1a;
   flex: 1;
+<<<<<<< HEAD
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -290,11 +421,20 @@
 }
 
 /* ── Disposal bar chart ──────────────────────────────────────── */
+=======
+}
+
+/* Bar chart rows */
+>>>>>>> 600b0a2610eb359049ef4caf5d18075c13b31af8
 .cr-bar-row {
   display: flex;
   align-items: center;
   gap: 10px;
+<<<<<<< HEAD
   margin-bottom: 12px;
+=======
+  margin-bottom: 10px;
+>>>>>>> 600b0a2610eb359049ef4caf5d18075c13b31af8
 }
 
 .cr-bar-row:last-child { margin-bottom: 0; }
@@ -304,7 +444,10 @@
   color: #374151;
   width: 120px;
   min-width: 120px;
+<<<<<<< HEAD
   line-height: 1.3;
+=======
+>>>>>>> 600b0a2610eb359049ef4caf5d18075c13b31af8
 }
 
 .cr-bar-bg {
@@ -313,7 +456,10 @@
   border-radius: 4px;
   height: 8px;
   overflow: hidden;
+<<<<<<< HEAD
   min-width: 0;
+=======
+>>>>>>> 600b0a2610eb359049ef4caf5d18075c13b31af8
 }
 
 .cr-bar-fill {
@@ -329,7 +475,10 @@
   font-weight: 500;
 }
 
+<<<<<<< HEAD
 /* Colour tokens used on bar percentages */
+=======
+>>>>>>> 600b0a2610eb359049ef4caf5d18075c13b31af8
 .cr-bar-success { color: #1D9E75; }
 .cr-bar-info    { color: #2563eb; }
 .cr-bar-danger  { color: #dc2626; }
