@@ -1,57 +1,4 @@
 import React, { useState, useMemo } from "react";
-<<<<<<< HEAD
-import "./WasteSegregation.css";
-
-const TYPE_DOT = {
-  Recyclable:          "#1D9E75",
-  Biodegradable:       "#f59e0b",
-  "Non-Biodegradable": "#dc2626",
-};
-
-const WASTE_TYPES = ["Recyclable", "Biodegradable", "Non-Biodegradable"];
-
-const TypeBadge = ({ type }) => {
-  const cls =
-    type === "Recyclable"          ? "badge-recyclable" :
-    type === "Biodegradable"       ? "badge-biodegradable" :
-    "badge-nonbiodegradable";
-  return <span className={`ws-badge ${cls}`}>{type}</span>;
-};
-
-const ResultBadge = ({ result }) => (
-  <span className={`ws-badge ${result === "Classified" ? "badge-success" : "badge-warning"}`}>
-    {result === "Classified" ? "Classified" : "Fallback"}
-  </span>
-);
-
-const WasteSegregation = ({ events = [] }) => {
-  const [filter, setFilter] = useState("All");
-
-  const filtered = useMemo(
-    () => (filter === "All" ? events : events.filter((e) => e.type === filter)),
-    [events, filter]
-  );
-
-  return (
-    <div className="ws-page">
-      {/* Header */}
-      <div className="ws-page-header">
-        <div>
-          <h2 className="ws-page-title">Waste Segregation</h2>
-        </div>
-      </div>
-
-      {/* Card */}
-      <div className="ws-card">
-        <div className="ws-card-header">
-          <p className="ws-card-title">Event log</p>
-          <div className="ws-card-actions">
-            {["All", ...WASTE_TYPES].map((f) => (
-              <button
-                key={f}
-                className={`ws-filter-btn ${filter === f ? "ws-filter-active" : ""}`}
-                onClick={() => setFilter(f)}
-=======
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -60,30 +7,48 @@ import "./WasteSegregation.css";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const COLORS = {
-  Recyclable:     "#1D9E75",
-  "Non-Recyclable": "#E24B4A",
-  General:        "#F59E0B",
+  Recyclable:        "#1D9E75",
+  "Non-Recyclable":  "#E24B4A",
+  "Non-Biodegradable": "#dc2626",
+  Biodegradable:     "#f59e0b",
+  General:           "#F59E0B",
 };
 
 const WASTE_ITEMS = {
-  Recyclable:       "Plastic bottles, paper, metal cans",
-  "Non-Recyclable": "Food wrappers, styrofoam, soiled paper",
-  General:          "Mixed / unknown waste",
+  Recyclable:        "Plastic bottles, paper, metal cans",
+  "Non-Recyclable":  "Food wrappers, styrofoam, soiled paper",
+  "Non-Biodegradable": "Plastic bags, containers, wrappers",
+  Biodegradable:     "Food waste, paper, organic materials",
+  General:           "Mixed / unknown waste",
 };
 
+const WASTE_TYPES = ["Recyclable", "Biodegradable", "Non-Biodegradable", "General"];
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
-const TypeBadge = ({ type }) => (
-  <span
-    className="ws-type-badge"
-    style={{
-      background: `${COLORS[type]}18`,
-      color:       COLORS[type],
-      border:      `1px solid ${COLORS[type]}40`,
-    }}
-  >
-    {type}
-  </span>
-);
+const TypeBadge = ({ type }) => {
+  const getColor = () => {
+    switch(type) {
+      case "Recyclable": return COLORS.Recyclable;
+      case "Biodegradable": return COLORS.Biodegradable;
+      case "Non-Biodegradable": return COLORS["Non-Biodegradable"];
+      default: return COLORS.General;
+    }
+  };
+  
+  const color = getColor();
+  return (
+    <span
+      className="ws-type-badge"
+      style={{
+        background: `${color}18`,
+        color: color,
+        border: `1px solid ${color}40`,
+      }}
+    >
+      {type}
+    </span>
+  );
+};
 
 const ResultBadge = ({ result }) => (
   <span className={`ws-result-badge ws-result-${result === "Classified" ? "ok" : "fallback"}`}>
@@ -101,18 +66,18 @@ const WasteSegregation = ({
 
   // ── Stats derived from bins prop ──────────────────────────────────────────
   const stats = useMemo(() => {
-    const recyclable    = bins.filter((b) => b.bin_type === "Recyclable").length;
-    const nonRecyclable = bins.filter((b) => b.bin_type === "Non-Recyclable").length;
-    const general       = bins.filter((b) => b.bin_type === "General").length;
-    const total         = bins.length;
-    const recyclingRate = total > 0 ? Math.round((recyclable / total) * 100) : 0;
+    const recyclable      = bins.filter((b) => b.bin_type === "Recyclable").length;
+    const nonRecyclable   = bins.filter((b) => b.bin_type === "Non-Recyclable" || b.bin_type === "Non-Biodegradable").length;
+    const general         = bins.filter((b) => b.bin_type === "General" || b.bin_type === "Biodegradable").length;
+    const total           = bins.length;
+    const recyclingRate   = total > 0 ? Math.round((recyclable / total) * 100) : 0;
     return { recyclable, nonRecyclable, general, total, recyclingRate };
   }, [bins]);
 
   const pieData = [
-    { name: "Recyclable",     value: stats.recyclable },
-    { name: "Non-Recyclable", value: stats.nonRecyclable },
-    { name: "General",        value: stats.general },
+    { name: "Recyclable",      value: stats.recyclable },
+    { name: "Non-Recyclable",  value: stats.nonRecyclable },
+    { name: "General",         value: stats.general },
   ];
 
   const filteredEvents = useMemo(() =>
@@ -156,9 +121,9 @@ const WasteSegregation = ({
       <div className="ws-metrics">
         {[
           { label: "Recycling rate",        value: `${stats.recyclingRate}%`, color: "#1D9E75", sub: "of total bins"          },
-          { label: "Total bins",             value: stats.total,               color: "#1a1a1a", sub: "monitored"               },
+          { label: "Total bins",            value: stats.total,               color: "#1a1a1a", sub: "monitored"               },
           { label: "Segregation accuracy",  value: `${segregationAccuracy}%`, color: "#1D9E75", sub: "correctly classified"    },
-          { label: "Fallback events",        value: fallbackCount,             color: "#F59E0B", sub: "general waste used"      },
+          { label: "Fallback events",       value: fallbackCount,             color: "#F59E0B", sub: "general waste used"      },
         ].map((m) => (
           <div key={m.label} className="ws-metric">
             <p className="ws-metric-label">{m.label}</p>
@@ -188,7 +153,7 @@ const WasteSegregation = ({
                       dataKey="value"
                     >
                       {pieData.map((entry) => (
-                        <Cell key={entry.name} fill={COLORS[entry.name]} />
+                        <Cell key={entry.name} fill={COLORS[entry.name] || COLORS.General} />
                       ))}
                     </Pie>
                     <Tooltip content={<CustomTooltip />} />
@@ -202,7 +167,7 @@ const WasteSegregation = ({
               <div className="ws-legend">
                 {pieData.map((d) => (
                   <div key={d.name} className="ws-legend-item">
-                    <span className="ws-legend-dot" style={{ background: COLORS[d.name] }} />
+                    <span className="ws-legend-dot" style={{ background: COLORS[d.name] || COLORS.General }} />
                     <span className="ws-legend-name">{d.name}</span>
                     <span className="ws-legend-count">{d.value}</span>
                   </div>
@@ -217,22 +182,22 @@ const WasteSegregation = ({
           <p className="ws-card-title">Live status</p>
           {["Recyclable", "Non-Recyclable", "General"].map((type) => {
             const count =
-              type === "Recyclable"     ? stats.recyclable :
-              type === "Non-Recyclable" ? stats.nonRecyclable :
+              type === "Recyclable"      ? stats.recyclable :
+              type === "Non-Recyclable"  ? stats.nonRecyclable :
               stats.general;
             const pct = stats.total > 0 ? Math.round((count / stats.total) * 100) : 0;
             return (
               <div key={type} className="ws-live-row">
                 <div className="ws-live-left">
-                  <span className="ws-live-dot-sm" style={{ background: COLORS[type] }} />
+                  <span className="ws-live-dot-sm" style={{ background: COLORS[type] || COLORS.General }} />
                   <div>
                     <p className="ws-live-type">{type}</p>
-                    <p className="ws-live-items">{WASTE_ITEMS[type]}</p>
+                    <p className="ws-live-items">{WASTE_ITEMS[type] || WASTE_ITEMS.General}</p>
                   </div>
                 </div>
                 <div className="ws-live-right">
                   <div className="ws-live-bar-bg">
-                    <div className="ws-live-bar-fill" style={{ width: `${pct}%`, background: COLORS[type] }} />
+                    <div className="ws-live-bar-fill" style={{ width: `${pct}%`, background: COLORS[type] || COLORS.General }} />
                   </div>
                   <span className="ws-live-count">{count}</span>
                 </div>
@@ -251,9 +216,9 @@ const WasteSegregation = ({
                 <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
                 <YAxis hide />
                 <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e5e7eb" }} cursor={{ fill: "#f9fafb" }} />
-                <Bar dataKey="Recyclable"     fill="#1D9E75" radius={[3, 3, 0, 0]} />
-                <Bar dataKey="Non-Recyclable" fill="#E24B4A" radius={[3, 3, 0, 0]} />
-                <Bar dataKey="General"        fill="#F59E0B" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="Recyclable"      fill="#1D9E75" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="Non-Recyclable"  fill="#E24B4A" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="General"         fill="#F59E0B" radius={[3, 3, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}
@@ -268,63 +233,27 @@ const WasteSegregation = ({
             <p className="ws-card-sub">Each disposal recorded — DFD Process 2 requirement</p>
           </div>
           <div className="ws-event-filters">
-            {["All", "Recyclable", "Non-Recyclable", "General"].map((f) => (
+            {["All", "Recyclable", "Non-Recyclable", "Biodegradable", "General"].map((f) => (
               <button
                 key={f}
                 className={`ws-filter-btn ${eventFilter === f ? "ws-filter-active" : ""}`}
                 onClick={() => setEventFilter(f)}
->>>>>>> 600b0a2610eb359049ef4caf5d18075c13b31af8
               >
                 {f}
               </button>
             ))}
-<<<<<<< HEAD
-            <span className="ws-count">
-              {filtered.length} event{filtered.length !== 1 ? "s" : ""}
-            </span>
           </div>
         </div>
-
-=======
-          </div>
-        </div>
->>>>>>> 600b0a2610eb359049ef4caf5d18075c13b31af8
         <div className="ws-table-wrap">
           <table className="ws-table">
             <thead>
               <tr>
-<<<<<<< HEAD
                 <th>Time</th>
                 <th>Bin</th>
                 <th>Waste type</th>
                 <th>Item detected</th>
                 <th>Weight</th>
                 <th>Result</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="ws-empty">
-                    No events for this filter.
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((row) => (
-                  <tr key={row.id}>
-                    <td className="ws-muted ws-mono">{row.time}</td>
-                    <td style={{ fontWeight: 500 }}>{row.bin}</td>
-                    <td>
-                      <TypeBadge type={row.type} />
-                    </td>
-                    <td className="ws-muted">{row.item}</td>
-                    <td className="ws-muted">{row.weight}</td>
-                    <td>
-                      <ResultBadge result={row.result} />
-                    </td>
-=======
-                <th>Time</th><th>Bin</th><th>Waste type</th>
-                <th>Item detected</th><th>Weight</th><th>Result</th>
               </tr>
             </thead>
             <tbody>
@@ -339,22 +268,15 @@ const WasteSegregation = ({
                     <td className="ws-muted">{row.item}</td>
                     <td>{row.weight}</td>
                     <td><ResultBadge result={row.result} /></td>
->>>>>>> 600b0a2610eb359049ef4caf5d18075c13b31af8
                   </tr>
                 ))
               )}
             </tbody>
           </table>
         </div>
-<<<<<<< HEAD
-
-        <p className="ws-log-note">
-          "Fallback" means the system could not classify the item and defaulted to Non-Biodegradable.
-=======
         <p className="ws-log-note">
           ⚡ Live — events stream in from the parent via the <code>events</code> prop (WebSocket / polling).
           "Fallback" means the system could not classify the item and routed it to General waste.
->>>>>>> 600b0a2610eb359049ef4caf5d18075c13b31af8
         </p>
       </div>
     </div>
