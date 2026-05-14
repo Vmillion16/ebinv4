@@ -18,7 +18,7 @@ const app = express();
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-api-key'],
 }));
 app.options(/.*/, cors());
 app.use(express.json({ limit: '50mb' }));
@@ -63,9 +63,6 @@ const userSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // ── Bins ───────────────────────────────────────────────────
-// FIX: renamed current_fill_level → fill_level
-//      added weight_kg, last_updated, sensors[]
-//      removed 'Empty' from status enum
 const sensorSubSchema = new mongoose.Schema({
   sensor_name: { type: String, required: true },
   health_pct:  { type: Number, default: 100 },
@@ -74,27 +71,26 @@ const sensorSubSchema = new mongoose.Schema({
 }, { _id: false });
 
 const binSchema = new mongoose.Schema({
-  bin_name:         { type: String, required: true },
-  location:         { type: String, required: true },
-  bin_type:         { type: String, enum: ['Biodegradable', 'Non-Biodegradable', 'Recyclable'], required: true },
-  installation_area:{ type: String },
-  status:           { type: String, enum: ['Active', 'Full', 'Maintenance'], default: 'Active' },
-  fill_level:       { type: Number, default: 0 },   // renamed from current_fill_level
-  weight_kg:        { type: Number, default: 0 },   // cumulative since last collection
-  max_capacity:     { type: Number, default: 100 },
-  sensors:          { type: [sensorSubSchema], default: [] },
-  last_updated:     { type: Date, default: Date.now },
+  bin_name:          { type: String, required: true },
+  location:          { type: String, required: true },
+  bin_type:          { type: String, enum: ['Biodegradable', 'Non-Biodegradable', 'Recyclable'], required: true },
+  installation_area: { type: String },
+  status:            { type: String, enum: ['Active', 'Full', 'Maintenance'], default: 'Active' },
+  fill_level:        { type: Number, default: 0 },
+  weight_kg:         { type: Number, default: 0 },
+  max_capacity:      { type: Number, default: 100 },
+  sensors:           { type: [sensorSubSchema], default: [] },
+  last_updated:      { type: Date, default: Date.now },
 });
 
 // ── Waste Events ────────────────────────────────────────────
-// Written by the laptop on every object detection
 const wasteEventSchema = new mongoose.Schema({
-  bin_id:      { type: mongoose.Schema.Types.ObjectId, ref: 'Bin',  required: true },
+  bin_id:      { type: mongoose.Schema.Types.ObjectId, ref: 'Bin', required: true },
   detected_at: { type: Date, default: Date.now },
   waste_type:  { type: String, enum: ['Recyclable', 'Biodegradable', 'Non-Biodegradable'], required: true },
-  item_label:  { type: String },        // e.g. 'plastic bottle'
+  item_label:  { type: String },
   weight_kg:   { type: Number, default: 0 },
-  confidence:  { type: Number, default: 1 }, // 0–1 from model
+  confidence:  { type: Number, default: 1 },
   result:      { type: String, enum: ['Classified', 'Fallback'], default: 'Classified' },
 });
 wasteEventSchema.index({ bin_id: 1, detected_at: -1 });
@@ -107,13 +103,12 @@ const chargingPortSchema = new mongoose.Schema({
 });
 
 // ── Reward Sessions ─────────────────────────────────────────
-// Created automatically when a wasteEvent qualifies
 const rewardSessionSchema = new mongoose.Schema({
-  event_id:    { type: mongoose.Schema.Types.ObjectId, ref: 'WasteEvent',    required: true },
-  port_id:     { type: mongoose.Schema.Types.ObjectId, ref: 'ChargingPort',  required: true },
-  started_at:  { type: Date, default: Date.now },
-  duration_min:{ type: Number, default: 20 },
-  result:      { type: String, enum: ['Granted', 'Declined'], default: 'Granted' },
+  event_id:     { type: mongoose.Schema.Types.ObjectId, ref: 'WasteEvent',   required: true },
+  port_id:      { type: mongoose.Schema.Types.ObjectId, ref: 'ChargingPort', required: true },
+  started_at:   { type: Date, default: Date.now },
+  duration_min: { type: Number, default: 20 },
+  result:       { type: String, enum: ['Granted', 'Declined'], default: 'Granted' },
 });
 rewardSessionSchema.index({ started_at: -1 });
 
@@ -152,31 +147,30 @@ const maintenanceRequestSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // ── Settings ────────────────────────────────────────────────
-// Single document — use findOneAndUpdate with upsert: true
 const settingsSchema = new mongoose.Schema({
-  fullThreshold:      { type: Number, default: 90 },
-  nearFullThreshold:  { type: Number, default: 75 },
-  overflowThreshold:  { type: Number, default: 95 },
-  collectionDays:     { type: [String], default: ['Tuesday', 'Saturday'] },
-  collectionTime:     { type: String,  default: '14:00' },
-  municipalPickup:    { type: [String], default: ['Tuesday', 'Saturday'] },
-  odorEnabled:        { type: Boolean, default: true },
-  fanTriggerLevel:    { type: Number,  default: 60 },
-  fanDuration:        { type: Number,  default: 10 },
-  lowBatteryAlert:    { type: Number,  default: 20 },
-  reducedModeLevel:   { type: Number,  default: 10 },
-  rewardEnabled:      { type: Boolean, default: true },
-  chargingDuration:   { type: Number,  default: 20 },
-  rewardWasteType:    { type: String,  default: 'Recyclable' },
-  emailEnabled:       { type: Boolean, default: true },
-  emailAddress:       { type: String,  default: 'admin@pdm.edu.ph' },
-  smsEnabled:         { type: Boolean, default: false },
-  smsNumber:          { type: String,  default: '' },
-  notifyOnFull:       { type: Boolean, default: true },
-  notifyOnOverflow:   { type: Boolean, default: true },
-  notifyOnLowPower:   { type: Boolean, default: true },
-  adminName:          { type: String,  default: 'Eriza Enriquez-Santos' },
-  updatedAt:          { type: Date,    default: Date.now },
+  fullThreshold:     { type: Number,   default: 90 },
+  nearFullThreshold: { type: Number,   default: 75 },
+  overflowThreshold: { type: Number,   default: 95 },
+  collectionDays:    { type: [String], default: ['Tuesday', 'Saturday'] },
+  collectionTime:    { type: String,   default: '14:00' },
+  municipalPickup:   { type: [String], default: ['Tuesday', 'Saturday'] },
+  odorEnabled:       { type: Boolean,  default: true },
+  fanTriggerLevel:   { type: Number,   default: 60 },
+  fanDuration:       { type: Number,   default: 10 },
+  lowBatteryAlert:   { type: Number,   default: 20 },
+  reducedModeLevel:  { type: Number,   default: 10 },
+  rewardEnabled:     { type: Boolean,  default: true },
+  chargingDuration:  { type: Number,   default: 20 },
+  rewardWasteType:   { type: String,   default: 'Recyclable' },
+  emailEnabled:      { type: Boolean,  default: true },
+  emailAddress:      { type: String,   default: 'admin@pdm.edu.ph' },
+  smsEnabled:        { type: Boolean,  default: false },
+  smsNumber:         { type: String,   default: '' },
+  notifyOnFull:      { type: Boolean,  default: true },
+  notifyOnOverflow:  { type: Boolean,  default: true },
+  notifyOnLowPower:  { type: Boolean,  default: true },
+  adminName:         { type: String,   default: 'Eriza Enriquez-Santos' },
+  updatedAt:         { type: Date,     default: Date.now },
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -195,6 +189,8 @@ const Settings           = mongoose.model('Settings',           settingsSchema);
 // ─────────────────────────────────────────────────────────────
 // 7. AUTH MIDDLEWARE
 // ─────────────────────────────────────────────────────────────
+
+// JWT — used by the React dashboard
 const auth = (req, res, next) => {
   const token = req.headers['authorization']?.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'Access token required' });
@@ -205,8 +201,18 @@ const auth = (req, res, next) => {
   });
 };
 
+// Admin-only guard — attach after auth
 const adminOnly = (req, res, next) => {
-  if (req.user?.role !== 'Administrator') return res.status(403).json({ error: 'Admin only' });
+  if (req.user?.role !== 'Administrator')
+    return res.status(403).json({ error: 'Admin only' });
+  next();
+};
+
+// API key — used by the laptop detection script (no login needed)
+const laptopAuth = (req, res, next) => {
+  const apiKey = req.headers['x-api-key'];
+  if (!apiKey || apiKey !== process.env.LAPTOP_API_KEY)
+    return res.status(401).json({ error: 'Invalid API key' });
   next();
 };
 
@@ -214,38 +220,33 @@ const adminOnly = (req, res, next) => {
 // 8. HELPERS
 // ─────────────────────────────────────────────────────────────
 const generateOtp = () => Math.floor(100000 + Math.random() * 900000).toString();
-
-// Returns the bin response with bin_id mapped from _id
-// so frontend components that use bin.bin_id work correctly
-const mapBin = (bin) => ({ ...bin.toObject(), bin_id: bin._id });
+const mapBin      = (bin) => ({ ...bin.toObject(), bin_id: bin._id });
 
 // ─────────────────────────────────────────────────────────────
 // 9. SEED DATA
 // ─────────────────────────────────────────────────────────────
 async function seedData() {
   try {
-    // Users
     if (await User.countDocuments({ username: 'admin' }) === 0) {
       await User.insertMany([
         {
           full_name: 'Eriza Enriquez-Santos',
-          username: 'admin',
-          email: 'admin@pdm.edu.ph',
-          password: await bcrypt.hash('password', 10),
-          role: 'Administrator',
+          username:  'admin',
+          email:     'admin@pdm.edu.ph',
+          password:  await bcrypt.hash('password', 10),
+          role:      'Administrator',
         },
         {
           full_name: 'Jimmy Capalad',
-          username: 'staff',
-          email: 'staff@pdm.edu.ph',
-          password: await bcrypt.hash('password', 10),
-          role: 'Utility Staff',
+          username:  'staff',
+          email:     'staff@pdm.edu.ph',
+          password:  await bcrypt.hash('password', 10),
+          role:      'Utility Staff',
         },
       ]);
       console.log('✅ Users seeded');
     }
 
-    // Bins
     if (await Bin.countDocuments() === 0) {
       await Bin.insertMany([
         {
@@ -276,7 +277,6 @@ async function seedData() {
       console.log('✅ Bins seeded');
     }
 
-    // Charging Ports
     if (await ChargingPort.countDocuments() === 0) {
       await ChargingPort.insertMany([
         { name: 'Port A', status: 'Available' },
@@ -286,12 +286,10 @@ async function seedData() {
       console.log('✅ Charging ports seeded');
     }
 
-    // Settings (single document)
     if (await Settings.countDocuments() === 0) {
       await Settings.create({});
       console.log('✅ Default settings created');
     }
-
   } catch (err) {
     console.log('Seed warning:', err.message);
   }
@@ -314,10 +312,12 @@ app.post('/api/register', async (req, res) => {
     if (!username || !email || !password)
       return res.status(400).json({ error: 'All fields are required' });
 
-    const exists = await User.findOne({ $or: [{ username: username.trim() }, { email: email.trim().toLowerCase() }] });
+    const exists = await User.findOne({
+      $or: [{ username: username.trim() }, { email: email.trim().toLowerCase() }],
+    });
     if (exists) return res.status(400).json({ error: 'Username or email already exists' });
 
-    const newUser = await User.create({
+    await User.create({
       full_name: username.trim(),
       username:  username.trim(),
       email:     email.trim().toLowerCase(),
@@ -339,8 +339,16 @@ app.post('/api/login', async (req, res) => {
     if (!user || !(await bcrypt.compare(password, user.password)))
       return res.status(401).json({ error: 'Invalid credentials' });
 
-    const token = jwt.sign({ userId: user._id, role: user.role }, SECRET_KEY, { expiresIn: '24h' });
-    res.json({ token, user: { id: user._id, fullName: user.full_name, email: user.email, role: user.role } });
+    const token = jwt.sign(
+      { userId: user._id, role: user.role },
+      SECRET_KEY,
+      { expiresIn: '24h' }
+    );
+
+    res.json({
+      token,
+      user: { id: user._id, fullName: user.full_name, email: user.email, role: user.role },
+    });
   } catch (err) {
     console.error('LOGIN ERROR:', err);
     res.status(500).json({ error: 'Server error' });
@@ -356,16 +364,22 @@ app.post('/api/forgot-password', async (req, res) => {
     if (!user) return res.status(404).json({ error: 'Email not found' });
 
     const otp = generateOtp();
-    user.otp = otp;
+    user.otp      = otp;
     user.otpExpiry = new Date(Date.now() + 5 * 60 * 1000);
     await user.save();
 
     await transporter.sendMail({
-      from: process.env.EMAIL_USER,
-      to: user.email,
+      from:    process.env.EMAIL_USER,
+      to:      user.email,
       subject: 'E-Bin Password Reset OTP',
-      html: `<div style="font-family:Arial,sans-serif;padding:20px"><h2>E-Bin Password Reset</h2><p>Your OTP code is:</p><h1 style="letter-spacing:4px">${otp}</h1><p>This code expires in 5 minutes.</p></div>`,
+      html:    `<div style="font-family:Arial,sans-serif;padding:20px">
+                  <h2>E-Bin Password Reset</h2>
+                  <p>Your OTP code is:</p>
+                  <h1 style="letter-spacing:4px">${otp}</h1>
+                  <p>This code expires in 5 minutes.</p>
+                </div>`,
     });
+
     res.json({ message: 'OTP sent to your email' });
   } catch (err) {
     console.error('FORGOT PASSWORD ERROR:', err);
@@ -379,8 +393,8 @@ app.post('/api/verify-otp', async (req, res) => {
     if (!email || !otp) return res.status(400).json({ error: 'Email and OTP are required' });
 
     const user = await User.findOne({ email: email.trim().toLowerCase() });
-    if (!user || !user.otp) return res.status(400).json({ error: 'No OTP request found' });
-    if (user.otp !== otp.trim()) return res.status(400).json({ error: 'Invalid OTP' });
+    if (!user || !user.otp)          return res.status(400).json({ error: 'No OTP request found' });
+    if (user.otp !== otp.trim())     return res.status(400).json({ error: 'Invalid OTP' });
     if (new Date() > user.otpExpiry) return res.status(400).json({ error: 'OTP has expired' });
 
     res.json({ message: 'OTP verified successfully' });
@@ -393,7 +407,8 @@ app.post('/api/verify-otp', async (req, res) => {
 app.post('/api/reset-password', async (req, res) => {
   try {
     const { email, otp, newPassword } = req.body;
-    if (!email || !otp || !newPassword) return res.status(400).json({ error: 'All fields are required' });
+    if (!email || !otp || !newPassword)
+      return res.status(400).json({ error: 'All fields are required' });
 
     const user = await User.findOne({ email: email.trim().toLowerCase() });
     if (!user || !user.otp)          return res.status(400).json({ error: 'No OTP request found' });
@@ -431,19 +446,17 @@ app.get('/api/dashboard', auth, async (req, res) => {
       MaintenanceRequest.countDocuments({ status: 'Pending' }),
       WasteEvent.countDocuments({ detected_at: { $gte: today } }),
       Bin.find({ fill_level: { $gte: 75 } }).sort({ fill_level: -1 }).limit(5),
-      // Aggregate last 7 days of waste events by day
       WasteEvent.aggregate([
         { $match: { detected_at: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } } },
         { $group: {
           _id: { $dateToString: { format: '%a', date: '$detected_at' } },
           kg:  { $sum: '$weight_kg' },
         }},
-        { $sort: { '_id': 1 } },
+        { $sort: { _id: 1 } },
         { $project: { _id: 0, day: '$_id', kg: { $round: ['$kg', 2] } } },
       ]),
     ]);
 
-    // Total waste collected today in kg
     const totalWasteToday = (await WasteEvent.aggregate([
       { $match: { detected_at: { $gte: today } } },
       { $group: { _id: null, total: { $sum: '$weight_kg' } } },
@@ -466,7 +479,6 @@ app.get('/api/dashboard', auth, async (req, res) => {
 
 // ── Bins ───────────────────────────────────────────────────
 
-// GET all bins
 app.get('/api/bins', auth, async (req, res) => {
   try {
     const bins = await Bin.find().sort({ location: 1 });
@@ -476,7 +488,6 @@ app.get('/api/bins', auth, async (req, res) => {
   }
 });
 
-// GET single bin
 app.get('/api/bins/:id', auth, async (req, res) => {
   try {
     const bin = await Bin.findById(req.params.id);
@@ -487,7 +498,6 @@ app.get('/api/bins/:id', auth, async (req, res) => {
   }
 });
 
-// PUT update bin (admin only — for settings/maintenance changes)
 app.put('/api/bins/:id', auth, adminOnly, async (req, res) => {
   try {
     const allowed = ['bin_name', 'location', 'bin_type', 'installation_area', 'status', 'max_capacity', 'sensors'];
@@ -503,7 +513,6 @@ app.put('/api/bins/:id', auth, adminOnly, async (req, res) => {
   }
 });
 
-// PUT reset bin after collection (zeroes fill and weight)
 app.put('/api/bins/:id/reset', auth, async (req, res) => {
   try {
     const bin = await Bin.findByIdAndUpdate(
@@ -519,20 +528,33 @@ app.put('/api/bins/:id/reset', auth, async (req, res) => {
 });
 
 // ── Waste Events ───────────────────────────────────────────
-// POST — called by the laptop on every object detection
-app.post('/api/waste-events', auth, async (req, res) => {
+
+// POST — laptop detection script uses x-api-key (no JWT needed)
+app.post('/api/waste-events', laptopAuth, async (req, res) => {
   try {
-    const { bin_id, waste_type, item_label, weight_kg = 0, confidence = 1, result = 'Classified' } = req.body;
-    if (!bin_id || !waste_type) return res.status(400).json({ error: 'bin_id and waste_type are required' });
+    const {
+      bin_id,
+      waste_type,
+      item_label,
+      weight_kg  = 0,
+      confidence = 1,
+      result     = 'Classified',
+    } = req.body;
+
+    if (!bin_id || !waste_type)
+      return res.status(400).json({ error: 'bin_id and waste_type are required' });
 
     const bin = await Bin.findById(bin_id);
     if (!bin) return res.status(404).json({ error: 'Bin not found' });
 
     // 1. Insert waste event
-    const event = await WasteEvent.create({ bin_id, waste_type, item_label, weight_kg, confidence, result });
+    const event = await WasteEvent.create({
+      bin_id, waste_type, item_label, weight_kg, confidence, result,
+    });
 
     // 2. Update bin fill level and weight
-    const newFill   = Math.min(100, bin.fill_level + (weight_kg * 2));  // adjust multiplier to your sensor calibration
+    // Adjust the multiplier (×2) to match your actual sensor calibration
+    const newFill   = Math.min(100, bin.fill_level + (weight_kg * 2));
     const newStatus = newFill >= 90 ? 'Full' : bin.status;
     await Bin.findByIdAndUpdate(bin_id, {
       $inc: { weight_kg: weight_kg },
@@ -567,7 +589,7 @@ app.post('/api/waste-events', auth, async (req, res) => {
   }
 });
 
-// GET — WasteSegregation.jsx event log
+// GET — React dashboard uses JWT
 app.get('/api/waste-events', auth, async (req, res) => {
   try {
     const filter = {};
@@ -580,15 +602,14 @@ app.get('/api/waste-events', auth, async (req, res) => {
       .limit(Number(req.query.limit) || 100)
       .populate('bin_id', 'bin_name bin_type');
 
-    // Shape the response to match WasteSegregation.jsx expected props
     const shaped = events.map((e) => ({
-      id:       e._id,
-      time:     e.detected_at.toLocaleString('en-PH', { timeZone: 'Asia/Manila' }),
-      bin:      e.bin_id?.bin_name ?? '—',
-      type:     e.waste_type,
-      item:     e.item_label ?? '—',
-      weight:   `${e.weight_kg.toFixed(2)} kg`,
-      result:   e.result,
+      id:     e._id,
+      time:   e.detected_at.toLocaleString('en-PH', { timeZone: 'Asia/Manila' }),
+      bin:    e.bin_id?.bin_name ?? '—',
+      type:   e.waste_type,
+      item:   e.item_label ?? '—',
+      weight: `${e.weight_kg.toFixed(2)} kg`,
+      result: e.result,
     }));
 
     res.json(shaped);
@@ -599,13 +620,12 @@ app.get('/api/waste-events', auth, async (req, res) => {
 
 // ── Collection Logs ────────────────────────────────────────
 
-// GET — CollectionReward.jsx collection log tab
 app.get('/api/collection-logs', auth, async (req, res) => {
   try {
     const filter = {};
-    if (req.query.bin_id)    filter.bin_id    = req.query.bin_id;
+    if (req.query.bin_id)     filter.bin_id     = req.query.bin_id;
     if (req.query.waste_type) filter.waste_type = req.query.waste_type;
-    if (req.query.status)    filter.status    = req.query.status;
+    if (req.query.status)     filter.status     = req.query.status;
 
     const logs = await CollectionLog.find(filter)
       .sort({ collected_at: -1 })
@@ -616,11 +636,11 @@ app.get('/api/collection-logs', auth, async (req, res) => {
     const shaped = logs.map((l) => ({
       id:          l._id,
       datetime:    l.collected_at.toLocaleString('en-PH', { timeZone: 'Asia/Manila' }),
-      bin:         l.bin_id?.bin_name   ?? '—',
+      bin:         l.bin_id?.bin_name    ?? '—',
       staff:       l.staff_id?.full_name ?? '—',
-      type:        l.waste_type   ?? '—',
+      type:        l.waste_type          ?? '—',
       weight:      `${l.weight_kg.toFixed(2)} kg`,
-      destination: l.destination  ?? '—',
+      destination: l.destination         ?? '—',
       status:      l.status,
     }));
 
@@ -630,7 +650,6 @@ app.get('/api/collection-logs', auth, async (req, res) => {
   }
 });
 
-// POST — staff submits a collection
 app.post('/api/collection-logs', auth, async (req, res) => {
   try {
     const { bin_id, waste_type, weight_kg = 0, destination, status = 'Done' } = req.body;
@@ -645,7 +664,6 @@ app.post('/api/collection-logs', auth, async (req, res) => {
       status,
     });
 
-    // Reset bin after successful collection
     if (status === 'Done') {
       await Bin.findByIdAndUpdate(bin_id, {
         fill_level:   0,
@@ -664,7 +682,6 @@ app.post('/api/collection-logs', auth, async (req, res) => {
 
 // ── Reward Sessions ────────────────────────────────────────
 
-// GET — CollectionReward.jsx reward tab
 app.get('/api/reward-sessions', auth, async (req, res) => {
   try {
     const sessions = await RewardSession.find()
@@ -689,7 +706,6 @@ app.get('/api/reward-sessions', auth, async (req, res) => {
   }
 });
 
-// PUT — close a reward session (free up the port)
 app.put('/api/reward-sessions/:id/close', auth, async (req, res) => {
   try {
     const session = await RewardSession.findById(req.params.id);
@@ -716,7 +732,11 @@ app.get('/api/charging-ports', auth, async (req, res) => {
 app.put('/api/charging-ports/:id/status', auth, adminOnly, async (req, res) => {
   try {
     const { status, detail } = req.body;
-    const port = await ChargingPort.findByIdAndUpdate(req.params.id, { status, detail }, { new: true });
+    const port = await ChargingPort.findByIdAndUpdate(
+      req.params.id,
+      { status, detail },
+      { new: true }
+    );
     if (!port) return res.status(404).json({ error: 'Port not found' });
     res.json(port);
   } catch (err) {
@@ -740,8 +760,8 @@ app.get('/api/maintenance-requests', auth, async (req, res) => {
     const shaped = requests.map((r) => ({
       id:          r._id,
       title:       r.title,
-      bin:         r.bin_id?.bin_name         ?? '—',
-      description: r.description              ?? '',
+      bin:         r.bin_id?.bin_name ?? '—',
+      description: r.description     ?? '',
       priority:    r.priority,
       status:      r.status,
       type:        r.type,
@@ -756,7 +776,8 @@ app.get('/api/maintenance-requests', auth, async (req, res) => {
 app.post('/api/maintenance-requests', auth, async (req, res) => {
   try {
     const { bin_id, title, type = 'Inspection', description, priority = 'Normal' } = req.body;
-    if (!bin_id || !title) return res.status(400).json({ error: 'bin_id and title are required' });
+    if (!bin_id || !title)
+      return res.status(400).json({ error: 'bin_id and title are required' });
 
     const request = await MaintenanceRequest.create({
       bin_id,
@@ -773,17 +794,14 @@ app.post('/api/maintenance-requests', auth, async (req, res) => {
   }
 });
 
-// PUT resolve — marks request done and writes a maintenance log
 app.put('/api/maintenance-requests/:id/resolve', auth, async (req, res) => {
   try {
     const request = await MaintenanceRequest.findById(req.params.id);
     if (!request) return res.status(404).json({ error: 'Request not found' });
 
-    // Mark done
     request.status = 'Done';
     await request.save();
 
-    // Write permanent log entry
     await MaintenanceLog.create({
       bin_id:      request.bin_id,
       staff_id:    req.user.userId,
@@ -833,7 +851,6 @@ app.get('/api/maintenance-logs', auth, async (req, res) => {
 
 app.get('/api/settings', auth, async (req, res) => {
   try {
-    // Always returns the one settings document, creating defaults if absent
     let settings = await Settings.findOne();
     if (!settings) settings = await Settings.create({});
     res.json(settings);
@@ -857,17 +874,15 @@ app.put('/api/settings', auth, adminOnly, async (req, res) => {
 });
 
 // ── Reports ────────────────────────────────────────────────
-// GET /api/reports?period=daily|weekly|monthly
-// Returns data shaped for Reports.jsx { daily:[], weekly:[], monthly:[] }
 
 app.get('/api/reports', auth, async (req, res) => {
   try {
     const { period = 'weekly' } = req.query;
 
     const FORMAT = {
-      daily:   { fmt: '%Y-%m-%d', label: '%b %d', days: 7  },
-      weekly:  { fmt: '%Y-W%V',   label: 'Wk %V', days: 56 },
-      monthly: { fmt: '%Y-%m',    label: '%b %Y', days: 365 },
+      daily:   { fmt: '%Y-%m-%d', days: 7   },
+      weekly:  { fmt: '%Y-W%V',   days: 56  },
+      monthly: { fmt: '%Y-%m',    days: 365 },
     };
 
     const cfg   = FORMAT[period] || FORMAT.weekly;
@@ -876,12 +891,12 @@ app.get('/api/reports', auth, async (req, res) => {
     const rows = await WasteEvent.aggregate([
       { $match: { detected_at: { $gte: since } } },
       { $group: {
-        _id: { $dateToString: { format: cfg.fmt, date: '$detected_at' } },
-        recyclable:    { $sum: { $cond: [{ $eq: ['$waste_type', 'Recyclable'] },          '$weight_kg', 0] } },
-        nonRecyclable: { $sum: { $cond: [{ $eq: ['$waste_type', 'Non-Biodegradable'] },   '$weight_kg', 0] } },
-        general:       { $sum: { $cond: [{ $eq: ['$waste_type', 'Biodegradable'] },       '$weight_kg', 0] } },
+        _id:           { $dateToString: { format: cfg.fmt, date: '$detected_at' } },
+        recyclable:    { $sum: { $cond: [{ $eq: ['$waste_type', 'Recyclable']          }, '$weight_kg', 0] } },
+        nonRecyclable: { $sum: { $cond: [{ $eq: ['$waste_type', 'Non-Biodegradable']   }, '$weight_kg', 0] } },
+        general:       { $sum: { $cond: [{ $eq: ['$waste_type', 'Biodegradable']       }, '$weight_kg', 0] } },
       }},
-      { $sort: { '_id': 1 } },
+      { $sort: { _id: 1 } },
       { $project: {
         _id:           0,
         label:         '$_id',
@@ -891,8 +906,6 @@ app.get('/api/reports', auth, async (req, res) => {
       }},
     ]);
 
-    // Return all three periods but only compute the requested one for brevity.
-    // Frontend can call ?period=daily, ?period=weekly, ?period=monthly separately.
     res.json(rows);
   } catch (err) {
     console.error('REPORTS ERROR:', err);
@@ -900,10 +913,15 @@ app.get('/api/reports', auth, async (req, res) => {
   }
 });
 
-// ── Test email (dev only) ──────────────────────────────────
+// ── Test email ─────────────────────────────────────────────
 app.get('/api/test-email', async (req, res) => {
   try {
-    await transporter.sendMail({ from: process.env.EMAIL_USER, to: process.env.EMAIL_USER, subject: 'Test Email', text: 'Email setup is working.' });
+    await transporter.sendMail({
+      from:    process.env.EMAIL_USER,
+      to:      process.env.EMAIL_USER,
+      subject: 'Test Email',
+      text:    'Email setup is working.',
+    });
     res.json({ message: 'Test email sent' });
   } catch (err) {
     res.status(500).json({ error: err.message });

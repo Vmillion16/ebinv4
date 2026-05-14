@@ -9,27 +9,26 @@ import Settings from './Settings';
 import CollectionReward from './CollectionReward';
 import Maintenance from './Maintenance';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'https://ebinv4-1.onrender.com/api';
+// FIX: append /api once here so every route is correct
+const API_BASE = (import.meta.env.VITE_API_URL || 'https://ebinv4-1.onrender.com') + '/api';
 
 const Dashboard = ({ user, onLogout }) => {
-  const [activeTab, setActiveTab] = useState('overview');
-  const [dashboardData, setDashboardData] = useState(null);
-  const [bins, setBins] = useState([]);
+  const [activeTab,        setActiveTab]        = useState('overview');
+  const [dashboardData,    setDashboardData]    = useState(null);
+  const [bins,             setBins]             = useState([]);
   const [dashboardLoading, setDashboardLoading] = useState(true);
-  const [binsLoading, setBinsLoading] = useState(true);
+  const [binsLoading,      setBinsLoading]      = useState(true);
 
   const token = localStorage.getItem('token');
 
   const fetchDashboard = async () => {
     try {
-      const response = await axios.get(`${API_BASE}/dashboard`, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
+      const res = await axios.get(`${API_BASE}/dashboard`, {
+        headers: { Authorization: `Bearer ${token}` },
       });
-      setDashboardData(response.data);
-    } catch (error) {
-      console.error('Failed to fetch dashboard:', error);
+      setDashboardData(res.data);
+    } catch (err) {
+      console.error('Failed to fetch dashboard:', err);
     } finally {
       setDashboardLoading(false);
     }
@@ -37,14 +36,12 @@ const Dashboard = ({ user, onLogout }) => {
 
   const fetchBins = async () => {
     try {
-      const response = await axios.get(`${API_BASE}/bins`, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
+      const res = await axios.get(`${API_BASE}/bins`, {
+        headers: { Authorization: `Bearer ${token}` },
       });
-      setBins(response.data);
-    } catch (error) {
-      console.error('Failed to fetch bins:', error);
+      setBins(res.data);
+    } catch (err) {
+      console.error('Failed to fetch bins:', err);
     } finally {
       setBinsLoading(false);
     }
@@ -55,44 +52,34 @@ const Dashboard = ({ user, onLogout }) => {
       await axios.put(
         `${API_BASE}/bins/${binId}/reset`,
         {},
-        {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
-      alert('Bin reset successfully!');
       fetchBins();
       fetchDashboard();
-    } catch (error) {
-      console.error('Failed to reset bin:', error);
-      alert('Failed to reset bin');
+    } catch (err) {
+      console.error('Failed to reset bin:', err);
     }
   };
 
+  // Initial load
   useEffect(() => {
     fetchDashboard();
     fetchBins();
   }, []);
 
+  // Auto-refresh every 30 seconds
   useEffect(() => {
     const interval = setInterval(() => {
       fetchDashboard();
       fetchBins();
     }, 30000);
-
     return () => clearInterval(interval);
   }, []);
 
   if (dashboardLoading) {
     return (
       <div className="dashboard">
-        <Sidebar
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          user={user}
-          onLogout={onLogout}
-        />
+        <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} user={user} onLogout={onLogout} />
         <div className="main-content" style={{ padding: '20px' }}>
           <h2>Loading...</h2>
         </div>
@@ -106,20 +93,16 @@ const Dashboard = ({ user, onLogout }) => {
         return <DashboardOverview data={dashboardData} />;
 
       case 'bins':
-        return (
-          <BinMonitoring
-            bins={bins}
-            onResetBin={handleResetBin}
-            isLoading={binsLoading}
-            refetch={fetchBins}
-          />
-        );
+        // FIX: removed unused onResetBin and refetch props
+        return <BinMonitoring bins={bins} isLoading={binsLoading} />;
 
       case 'segregation':
-        return <WasteSegregation bins={bins} />;
+        // FIX: WasteSegregation fetches its own data — no props needed
+        return <WasteSegregation />;
 
       case 'reports':
-        return <Reports reports={[]} />;
+        // FIX: Reports fetches its own data — no props needed
+        return <Reports />;
 
       case 'settings':
         return <Settings />;
@@ -137,12 +120,7 @@ const Dashboard = ({ user, onLogout }) => {
 
   return (
     <div className="dashboard">
-      <Sidebar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        user={user}
-        onLogout={onLogout}
-      />
+      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} user={user} onLogout={onLogout} />
 
       <div className="main-content">
         <header className="header">
@@ -152,7 +130,6 @@ const Dashboard = ({ user, onLogout }) => {
               Last sync: {new Date().toLocaleTimeString()}
             </span>
           </div>
-
           <div className="user-info">
             <span className="user-name">{user?.fullName}</span>
             <span className={`role-badge role-${user?.role?.toLowerCase().replace(/\s+/g, '-')}`}>
