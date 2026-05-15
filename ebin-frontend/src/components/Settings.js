@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import './Settings.css';
+import API_URL from '../config';
 
 // ─── Initial state ─────────────────────────────────────────────────────────
 const DEFAULTS = {

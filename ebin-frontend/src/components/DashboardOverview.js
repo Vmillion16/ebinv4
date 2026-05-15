@@ -4,6 +4,7 @@ import {
   CartesianGrid, Tooltip,
 } from 'recharts';
 import './DashboardOverview.css';
+import API_URL from '../config';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const COLORS = {

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import "./CollectionReward.css";
+import API_URL from '../config';
 
 const statusClass = (s) => {
   if (s === "Done" || s === "Granted") return "badge badge-success";

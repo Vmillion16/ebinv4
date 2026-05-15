@@ -4,6 +4,7 @@ import {
   ResponsiveContainer, Tooltip, BarChart, Bar, Legend,
 } from 'recharts';
 import './Report.css';
+import API_URL from '../config';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const PERIODS = [

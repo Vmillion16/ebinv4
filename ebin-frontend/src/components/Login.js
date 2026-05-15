@@ -15,36 +15,37 @@ const Login = ({ onLogin }) => {
     username: '',
     password: ''
   });
-
+  
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  // In your Login.js handleSubmit function
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  
+  try {
+    const response = await axios.post(`${API_URL}/login`, {
+      username: credentials.username.trim(),
+      password: credentials.password
+    });
 
-    if (!credentials.username.trim() || !credentials.password) {
-      setError('All fields are required');
-      return;
-    }
+    console.log('Login response:', response.data); // Debug
 
-    try {
-      setLoading(true);
-      setError('');
-
-      const response = await axios.post(`${API_URL}/api/login`, {
-        username: credentials.username.trim(),
-        password: credentials.password
-      });
-
+    if (response.data.token) {
+      // IMPORTANT: Save token to localStorage
+      localStorage.setItem('token', response.data.token);
+      localStorage.setItem('user', JSON.stringify(response.data.user));
+      
+      console.log('Token saved:', localStorage.getItem('token')); // Debug
+      
+      // Call parent callback
       onLogin(response.data.user, response.data.token);
-    } catch (err) {
-      console.log('LOGIN ERROR:', err.response?.data || err.message);
-      setError(err.response?.data?.error || 'Invalid credentials');
-    } finally {
-      setLoading(false);
     }
-  };
+  } catch (err) {
+    console.error('Login error:', err);
+  }
+};
 
   return (
     <div className="login-page">
@@ -126,7 +127,7 @@ const Login = ({ onLogin }) => {
 
         <div className="bottom-links">
           <p>
-            Don’t have an account?{' '}
+            Don't have an account?{' '}
             <span
               className="link-text"
               onClick={() => {

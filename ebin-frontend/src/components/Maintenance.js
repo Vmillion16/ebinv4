@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import "./Maintenance.css";
+import API_URL from '../config';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const typeColor = (type) => {

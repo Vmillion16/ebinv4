@@ -8,9 +8,7 @@ import Reports from './Reports';
 import Settings from './Settings';
 import CollectionReward from './CollectionReward';
 import Maintenance from './Maintenance';
-
-// FIX: append /api once here so every route is correct
-const API_BASE = (import.meta.env.VITE_API_URL || 'https://ebinv4-1.onrender.com') + '/api';
+import API_URL from '../config';  // ← This is imported as API_URL
 
 const Dashboard = ({ user, onLogout }) => {
   const [activeTab,        setActiveTab]        = useState('overview');
@@ -22,21 +20,38 @@ const Dashboard = ({ user, onLogout }) => {
   const token = localStorage.getItem('token');
 
   const fetchDashboard = async () => {
-    try {
-      const res = await axios.get(`${API_BASE}/dashboard`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setDashboardData(res.data);
-    } catch (err) {
-      console.error('Failed to fetch dashboard:', err);
-    } finally {
-      setDashboardLoading(false);
+  try {
+    const token = localStorage.getItem('token');
+    console.log('Token being sent:', token ? 'Yes (length: ' + token.length + ')' : 'NO TOKEN!');
+    
+    if (!token) {
+      console.error('No token found! Redirecting to login...');
+      window.location.href = '/login';
+      return;
     }
-  };
+
+    const res = await axios.get(`${API_URL}/dashboard`, {
+      headers: { 
+        'Authorization': `Bearer ${token}`  // Make sure format is exactly this
+      }
+    });
+    setDashboardData(res.data);
+  } catch (err) {
+    console.error('Failed to fetch dashboard:', err);
+    if (err.response?.status === 401) {
+      console.log('Token invalid or expired, redirecting to login');
+      localStorage.removeItem('token');
+      window.location.href = '/login';
+    }
+  } finally {
+    setDashboardLoading(false);
+  }
+};
 
   const fetchBins = async () => {
     try {
-      const res = await axios.get(`${API_BASE}/bins`, {
+      // FIXED: Changed API_BASE to API_URL
+      const res = await axios.get(`${API_URL}/bins`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setBins(res.data);
@@ -49,8 +64,9 @@ const Dashboard = ({ user, onLogout }) => {
 
   const handleResetBin = async (binId) => {
     try {
+      // FIXED: Changed API_BASE to API_URL
       await axios.put(
-        `${API_BASE}/bins/${binId}/reset`,
+        `${API_URL}/bins/${binId}/reset`,
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -93,15 +109,12 @@ const Dashboard = ({ user, onLogout }) => {
         return <DashboardOverview data={dashboardData} />;
 
       case 'bins':
-        // FIX: removed unused onResetBin and refetch props
         return <BinMonitoring bins={bins} isLoading={binsLoading} />;
 
       case 'segregation':
-        // FIX: WasteSegregation fetches its own data — no props needed
         return <WasteSegregation />;
 
       case 'reports':
-        // FIX: Reports fetches its own data — no props needed
         return <Reports />;
 
       case 'settings':

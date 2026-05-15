@@ -29,8 +29,44 @@ app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 1000, message: 'Too 
 // 3. DATABASE
 // ─────────────────────────────────────────────────────────────
 mongoose.connect(process.env.MONGODB_URI)
-  .then(() => console.log('✅ MongoDB Connected!'))
-  .catch(err => { console.error('❌ MongoDB Error:', err.message); process.exit(1); });
+  .then(() => {
+    console.log('✅ MongoDB Connected!');
+    console.log('📊 Database name:', mongoose.connection.name);
+    console.log('🔗 Connection state:', mongoose.connection.readyState);
+  })
+  .catch(err => { 
+    console.error('❌ MongoDB Error:', err.message);
+    console.error('📝 Full error:', err);
+    process.exit(1); 
+  });
+
+// Add connection event listeners
+mongoose.connection.on('error', err => {
+  console.error('MongoDB connection error:', err);
+});
+
+mongoose.connection.on('disconnected', () => {
+  console.log('MongoDB disconnected');
+});mongoose.connect(process.env.MONGODB_URI)
+  .then(() => {
+    console.log('✅ MongoDB Connected!');
+    console.log('📊 Database name:', mongoose.connection.name);
+    console.log('🔗 Connection state:', mongoose.connection.readyState);
+  })
+  .catch(err => { 
+    console.error('❌ MongoDB Error:', err.message);
+    console.error('📝 Full error:', err);
+    process.exit(1); 
+  });
+
+// Add connection event listeners
+mongoose.connection.on('error', err => {
+  console.error('MongoDB connection error:', err);
+});
+
+mongoose.connection.on('disconnected', () => {
+  console.log('MongoDB disconnected');
+});
 
 const SECRET_KEY = process.env.JWT_SECRET || 'ebin-secret-2026';
 
@@ -935,5 +971,4 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 E-Bin Backend: http://localhost:${PORT}`);
   console.log(`📊 Health:        http://localhost:${PORT}/api/health`);
-  seedData();
 });
