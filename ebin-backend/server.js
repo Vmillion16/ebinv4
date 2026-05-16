@@ -47,25 +47,6 @@ mongoose.connection.on('error', err => {
 
 mongoose.connection.on('disconnected', () => {
   console.log('MongoDB disconnected');
-});mongoose.connect(process.env.MONGODB_URI)
-  .then(() => {
-    console.log('✅ MongoDB Connected!');
-    console.log('📊 Database name:', mongoose.connection.name);
-    console.log('🔗 Connection state:', mongoose.connection.readyState);
-  })
-  .catch(err => { 
-    console.error('❌ MongoDB Error:', err.message);
-    console.error('📝 Full error:', err);
-    process.exit(1); 
-  });
-
-// Add connection event listeners
-mongoose.connection.on('error', err => {
-  console.error('MongoDB connection error:', err);
-});
-
-mongoose.connection.on('disconnected', () => {
-  console.log('MongoDB disconnected');
 });
 
 const SECRET_KEY = process.env.JWT_SECRET || 'ebin-secret-2026';
@@ -221,6 +202,91 @@ const CollectionLog      = mongoose.model('CollectionLog',      collectionLogSch
 const MaintenanceLog     = mongoose.model('MaintenanceLog',     maintenanceLogSchema);
 const MaintenanceRequest = mongoose.model('MaintenanceRequest', maintenanceRequestSchema);
 const Settings           = mongoose.model('Settings',           settingsSchema);
+
+// ✅ ============================================================
+// ✅ PUBLIC DASHBOARD ENDPOINT (NO AUTHENTICATION REQUIRED)
+// ✅ Add this BEFORE your auth middleware and other routes
+// ✅ ============================================================
+app.get('/api/bins/public/dashboard', async (req, res) => {
+  try {
+    console.log('📊 Public dashboard requested');
+    
+    const bins = await Bin.find().sort({ location: 1 });
+    
+    // Calculate summary
+    const totalFillLevel = bins.reduce((sum, bin) => sum + (bin.fill_level || 0), 0);
+    const averageFillLevel = bins.length > 0 ? totalFillLevel / bins.length : 0;
+    const criticalBins = bins.filter(bin => (bin.fill_level || 0) >= 85).length;
+    const fullBins = bins.filter(bin => bin.status === 'Full').length;
+    
+    // Get last 7 days of waste events
+    const last7Days = [];
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      date.setHours(0, 0, 0, 0);
+      
+      const nextDay = new Date(date);
+      nextDay.setDate(nextDay.getDate() + 1);
+      
+      const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
+      
+      const events = await WasteEvent.aggregate([
+        {
+          $match: {
+            detected_at: { $gte: date, $lt: nextDay }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: '$weight_kg' }
+          }
+        }
+      ]);
+      
+      last7Days.push({
+        day: dayName,
+        kg: events.length > 0 ? Math.round(events[0].total * 10) / 10 : 0
+      });
+    }
+    
+    // Get today's waste total
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayTotal = await WasteEvent.aggregate([
+      { $match: { detected_at: { $gte: today } } },
+      { $group: { _id: null, total: { $sum: '$weight_kg' } } }
+    ]);
+    
+    res.json({
+      success: true,
+      bins: bins.map(bin => ({
+        _id: bin._id,
+        bin_name: bin.bin_name,
+        bin_type: bin.bin_type,
+        fillLevel: bin.fill_level,
+        status: bin.status,
+        location: bin.location,
+        weight_kg: bin.weight_kg
+      })),
+      wasteLast7Days: last7Days,
+      summary: {
+        totalBins: bins.length,
+        fullBins: fullBins,
+        averageFillLevel: Math.round(averageFillLevel),
+        criticalBins: criticalBins,
+        totalWasteToday: todayTotal.length > 0 ? Math.round(todayTotal[0].total * 10) / 10 : 0,
+        timestamp: new Date()
+      }
+    });
+    
+    console.log(`✅ Public dashboard data sent: ${bins.length} bins`);
+  } catch (err) {
+    console.error('Public dashboard error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 // ─────────────────────────────────────────────────────────────
 // 7. AUTH MIDDLEWARE
@@ -964,6 +1030,9 @@ app.get('/api/test-email', async (req, res) => {
   }
 });
 
+// Call seed data function
+seedData();
+
 // ─────────────────────────────────────────────────────────────
 // 11. START
 // ─────────────────────────────────────────────────────────────
@@ -971,4 +1040,5 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 E-Bin Backend: http://localhost:${PORT}`);
   console.log(`📊 Health:        http://localhost:${PORT}/api/health`);
+  console.log(`📋 Public Dashboard: http://localhost:${PORT}/api/bins/public/dashboard`);
 });
