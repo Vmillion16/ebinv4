@@ -347,6 +347,64 @@ app.post('/api/reset-password', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
+// DEBUG ENDPOINTS (Check database connections)
+// ─────────────────────────────────────────────────────────────
+
+// Debug endpoint to check collection logs data (NO AUTH for testing)
+app.get('/api/debug/collections', async (req, res) => {
+  try {
+    const count = await CollectionLog.countDocuments();
+    const allLogs = await CollectionLog.find().limit(10);
+    res.json({
+      success: true,
+      count: count,
+      logs: allLogs,
+      message: `Found ${count} collection logs in database`
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Debug endpoint to check reward sessions data (NO AUTH for testing)
+app.get('/api/debug/rewards', async (req, res) => {
+  try {
+    const count = await RewardSession.countDocuments();
+    const allRewards = await RewardSession.find().limit(10);
+    res.json({
+      success: true,
+      count: count,
+      rewards: allRewards,
+      message: `Found ${count} reward sessions in database`
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Debug endpoint to check all collections
+app.get('/api/debug/all', async (req, res) => {
+  try {
+    const collections = await mongoose.connection.db.listCollections().toArray();
+    const collectionNames = collections.map(c => c.name);
+    
+    const stats = {};
+    for (const name of collectionNames) {
+      const count = await mongoose.connection.db.collection(name).countDocuments();
+      stats[name] = count;
+    }
+    
+    res.json({
+      success: true,
+      collections: collectionNames,
+      counts: stats
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
 // 11. COLLECTION LOGS ROUTES (AUTH REQUIRED)
 // ─────────────────────────────────────────────────────────────
 
