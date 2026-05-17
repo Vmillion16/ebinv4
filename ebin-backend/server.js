@@ -287,6 +287,58 @@ app.get('/api/bins/public/dashboard', async (req, res) => {
   }
 });
 
+// ✅ ============================================================
+// ✅ PUBLIC WASTE EVENTS ENDPOINT (NO AUTHENTICATION REQUIRED)
+// ✅ Add this AFTER the public bins endpoint
+// ✅ ============================================================
+app.get('/api/waste-events/public/latest', async (req, res) => {
+  try {
+    console.log('📊 Public waste events requested');
+    
+    // Get latest waste events (limit 50)
+    const events = await WasteEvent.find()
+      .sort({ detected_at: -1 })
+      .limit(50)
+      .populate('bin_id', 'bin_name bin_type location');
+    
+    const shaped = events.map((e) => ({
+      id: e._id,
+      time: e.detected_at ? e.detected_at.toLocaleString('en-PH', { timeZone: 'Asia/Manila' }) : new Date().toLocaleString(),
+      bin: e.bin_id?.bin_name ?? 'Unknown Bin',
+      type: e.waste_type,
+      item: e.item_label ?? '—',
+      weight: `${(e.weight_kg || 0).toFixed(2)} kg`,
+      result: e.result,
+      confidence: e.confidence
+    }));
+    
+    // Get summary statistics
+    const totalWeight = await WasteEvent.aggregate([
+      { $group: { _id: null, total: { $sum: '$weight_kg' } } }
+    ]);
+    
+    const byType = await WasteEvent.aggregate([
+      { $group: { _id: '$waste_type', count: { $sum: 1 }, weight: { $sum: '$weight_kg' } } }
+    ]);
+    
+    res.json({
+      success: true,
+      count: events.length,
+      events: shaped,
+      summary: {
+        totalEvents: events.length,
+        totalWeight: totalWeight[0]?.total?.toFixed(2) || 0,
+        byType: byType
+      }
+    });
+    
+    console.log(`✅ Public waste events data sent: ${events.length} events`);
+  } catch (err) {
+    console.error('Public waste events error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // ─────────────────────────────────────────────────────────────
 // 7. AUTH MIDDLEWARE
 // ─────────────────────────────────────────────────────────────
