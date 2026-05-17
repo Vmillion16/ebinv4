@@ -204,86 +204,53 @@ const MaintenanceRequest = mongoose.model('MaintenanceRequest', maintenanceReque
 const Settings           = mongoose.model('Settings',           settingsSchema);
 
 // ✅ ============================================================
-// ✅ PUBLIC DASHBOARD ENDPOINT (NO AUTHENTICATION REQUIRED)
-// ✅ Add this BEFORE your auth middleware and other routes
+// ✅ PUBLIC WASTE EVENTS ENDPOINT (NO AUTHENTICATION REQUIRED)
+// ✅ Add this AFTER the public bins endpoint
 // ✅ ============================================================
-app.get('/api/bins/public/dashboard', async (req, res) => {
+app.get('/api/waste-events/public/latest', async (req, res) => {
   try {
-    console.log('📊 Public dashboard requested');
+    console.log('📊 Public waste events requested');
     
-    const bins = await Bin.find().sort({ location: 1 });
+    // Get latest waste events (limit 50)
+    const events = await WasteEvent.find()
+      .sort({ detected_at: -1 })
+      .limit(50)
+      .populate('bin_id', 'bin_name bin_type location');
     
-    // Calculate summary
-    const totalFillLevel = bins.reduce((sum, bin) => sum + (bin.fill_level || 0), 0);
-    const averageFillLevel = bins.length > 0 ? totalFillLevel / bins.length : 0;
-    const criticalBins = bins.filter(bin => (bin.fill_level || 0) >= 85).length;
-    const fullBins = bins.filter(bin => bin.status === 'Full').length;
+    const shaped = events.map((e) => ({
+      id: e._id,
+      time: e.detected_at ? e.detected_at.toLocaleString('en-PH', { timeZone: 'Asia/Manila' }) : new Date().toLocaleString(),
+      bin: e.bin_id?.bin_name ?? 'Unknown Bin',
+      type: e.waste_type,
+      item: e.item_label ?? '—',
+      weight: `${(e.weight_kg || 0).toFixed(2)} kg`,
+      result: e.result,
+      confidence: e.confidence
+    }));
     
-    // Get last 7 days of waste events
-    const last7Days = [];
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      date.setHours(0, 0, 0, 0);
-      
-      const nextDay = new Date(date);
-      nextDay.setDate(nextDay.getDate() + 1);
-      
-      const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
-      
-      const events = await WasteEvent.aggregate([
-        {
-          $match: {
-            detected_at: { $gte: date, $lt: nextDay }
-          }
-        },
-        {
-          $group: {
-            _id: null,
-            total: { $sum: '$weight_kg' }
-          }
-        }
-      ]);
-      
-      last7Days.push({
-        day: dayName,
-        kg: events.length > 0 ? Math.round(events[0].total * 10) / 10 : 0
-      });
-    }
-    
-    // Get today's waste total
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayTotal = await WasteEvent.aggregate([
-      { $match: { detected_at: { $gte: today } } },
+    // Get summary statistics
+    const totalWeight = await WasteEvent.aggregate([
       { $group: { _id: null, total: { $sum: '$weight_kg' } } }
+    ]);
+    
+    const byType = await WasteEvent.aggregate([
+      { $group: { _id: '$waste_type', count: { $sum: 1 }, weight: { $sum: '$weight_kg' } } }
     ]);
     
     res.json({
       success: true,
-      bins: bins.map(bin => ({
-        _id: bin._id,
-        bin_name: bin.bin_name,
-        bin_type: bin.bin_type,
-        fillLevel: bin.fill_level,
-        status: bin.status,
-        location: bin.location,
-        weight_kg: bin.weight_kg
-      })),
-      wasteLast7Days: last7Days,
+      count: events.length,
+      events: shaped,
       summary: {
-        totalBins: bins.length,
-        fullBins: fullBins,
-        averageFillLevel: Math.round(averageFillLevel),
-        criticalBins: criticalBins,
-        totalWasteToday: todayTotal.length > 0 ? Math.round(todayTotal[0].total * 10) / 10 : 0,
-        timestamp: new Date()
+        totalEvents: events.length,
+        totalWeight: totalWeight[0]?.total?.toFixed(2) || 0,
+        byType: byType
       }
     });
     
-    console.log(`✅ Public dashboard data sent: ${bins.length} bins`);
+    console.log(`✅ Public waste events data sent: ${events.length} events`);
   } catch (err) {
-    console.error('Public dashboard error:', err);
+    console.error('Public waste events error:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
