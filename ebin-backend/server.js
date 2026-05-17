@@ -289,7 +289,6 @@ app.get('/api/bins/public/dashboard', async (req, res) => {
 
 // ✅ ============================================================
 // ✅ PUBLIC WASTE EVENTS ENDPOINT (NO AUTHENTICATION REQUIRED)
-// ✅ Add this AFTER the public bins endpoint
 // ✅ ============================================================
 app.get('/api/waste-events/public/latest', async (req, res) => {
   try {
@@ -317,18 +316,13 @@ app.get('/api/waste-events/public/latest', async (req, res) => {
       { $group: { _id: null, total: { $sum: '$weight_kg' } } }
     ]);
     
-    const byType = await WasteEvent.aggregate([
-      { $group: { _id: '$waste_type', count: { $sum: 1 }, weight: { $sum: '$weight_kg' } } }
-    ]);
-    
     res.json({
       success: true,
       count: events.length,
       events: shaped,
       summary: {
         totalEvents: events.length,
-        totalWeight: totalWeight[0]?.total?.toFixed(2) || 0,
-        byType: byType
+        totalWeight: totalWeight[0]?.total?.toFixed(2) || 0
       }
     });
     
