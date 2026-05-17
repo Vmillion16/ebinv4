@@ -75,6 +75,9 @@ const userSchema = new mongoose.Schema({
   password:       { type: String, required: true },
   role:           { type: String, enum: ['Administrator', 'Utility Staff', 'Maintenance Personnel'], default: 'Utility Staff' },
   account_status: { type: String, default: 'Active' },
+  points:         { type: Number, default: 0 },
+  total_rewards:  { type: Number, default: 0 },
+  last_reward_at: { type: Date },
   otp:            { type: String,  default: null },
   otpExpiry:      { type: Date,    default: null },
 }, { timestamps: true });
@@ -114,32 +117,149 @@ wasteEventSchema.index({ bin_id: 1, detected_at: -1 });
 
 // ── Charging Ports ──────────────────────────────────────────
 const chargingPortSchema = new mongoose.Schema({
-  name:   { type: String, required: true },
-  status: { type: String, enum: ['Available', 'In use', 'Offline'], default: 'Available' },
-  detail: { type: String },
+  name: {
+    type: String,
+    required: true,
+    unique: true
+  },
+  location: {
+    type: String,
+    default: ''
+  },
+  status: {
+    type: String,
+    enum: ['Available', 'In use', 'Offline', 'Maintenance'],
+    default: 'Available'
+  },
+  current_session_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'RewardSession'
+  },
+  total_sessions: {
+    type: Number,
+    default: 0
+  },
+  total_charging_minutes: {
+    type: Number,
+    default: 0
+  },
+  last_used_at: {
+    type: Date
+  },
+  health_status: {
+    type: String,
+    enum: ['Good', 'Warning', 'Critical'],
+    default: 'Good'
+  },
+  detail: {
+    type: String,
+    default: ''
+  }
 });
 
 // ── Reward Sessions ─────────────────────────────────────────
+// ── Reward Sessions ─────────────────────────────────────────
 const rewardSessionSchema = new mongoose.Schema({
-  event_id:     { type: mongoose.Schema.Types.ObjectId, ref: 'WasteEvent',   required: true },
-  port_id:      { type: mongoose.Schema.Types.ObjectId, ref: 'ChargingPort', required: true },
-  started_at:   { type: Date, default: Date.now },
-  duration_min: { type: Number, default: 20 },
-  result:       { type: String, enum: ['Granted', 'Declined'], default: 'Granted' },
+  event_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'WasteEvent',
+    required: true
+  },
+  port_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'ChargingPort',
+    required: true
+  },
+  user_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  started_at: {
+    type: Date,
+    default: Date.now
+  },
+  duration_min: {
+    type: Number,
+    default: 20
+  },
+  result: {
+    type: String,
+    enum: ['Granted', 'Declined', 'Pending'],
+    default: 'Pending'
+  },
+  points_earned: {
+    type: Number,
+    default: 0
+  },
+  reward_type: {
+    type: String,
+    enum: ['disposal_reward', 'charging_reward', 'bonus', 'points_redeemed'],
+    default: 'disposal_reward'
+  },
+  description: {
+    type: String,
+    default: ''
+  },
+  ended_at: {
+    type: Date
+  },
+  created_at: {
+    type: Date,
+    default: Date.now
+  }
 });
-rewardSessionSchema.index({ started_at: -1 });
+rewardSessionSchema.index({ user_id: 1, started_at: -1 });
+rewardSessionSchema.index({ event_id: 1 });
+rewardSessionSchema.index({ port_id: 1 });
+rewardSessionSchema.index({ result: 1 });
 
 // ── Collection Logs ─────────────────────────────────────────
 const collectionLogSchema = new mongoose.Schema({
-  bin_id:       { type: mongoose.Schema.Types.ObjectId, ref: 'Bin',  required: true },
-  staff_id:     { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  collected_at: { type: Date, default: Date.now },
-  waste_type:   { type: String },
-  weight_kg:    { type: Number, default: 0 },
-  destination:  { type: String },
-  status:       { type: String, enum: ['Done', 'Partial'], default: 'Done' },
+  bin_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Bin',
+    required: true
+  },
+  staff_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  collected_at: {
+    type: Date,
+    default: Date.now
+  },
+  waste_type: {
+    type: String,
+    enum: ['Recyclable', 'Biodegradable', 'Non-Biodegradable'],
+    required: true
+  },
+  weight_kg: {
+    type: Number,
+    required: true,
+    min: 0
+  },
+  destination: {
+    type: String,
+    default: 'Recycling Center'
+  },
+  status: {
+    type: String,
+    enum: ['Done', 'Partial', 'Scheduled', 'In Progress'],
+    default: 'Done'
+  },
+  notes: {
+    type: String,
+    default: ''
+  },
+  created_at: {
+    type: Date,
+    default: Date.now
+  }
 });
 collectionLogSchema.index({ bin_id: 1, collected_at: -1 });
+collectionLogSchema.index({ staff_id: 1 });
 
 // ── Maintenance Logs ────────────────────────────────────────
 const maintenanceLogSchema = new mongoose.Schema({
@@ -333,6 +453,764 @@ app.get('/api/waste-events/public/latest', async (req, res) => {
   }
 });
 
+// ✅ ============================================================
+// ✅ COLLECTION ROUTES (AUTHENTICATION REQUIRED)
+// ✅ ============================================================
+
+// Get all collection logs (with filters)
+app.get('/api/collections', auth, async (req, res) => {
+  try {
+    const { 
+      startDate, 
+      endDate, 
+      bin_id, 
+      staff_id, 
+      waste_type, 
+      status,
+      limit = 100,
+      page = 1
+    } = req.query;
+
+    const filter = {};
+    
+    if (startDate || endDate) {
+      filter.collected_at = {};
+      if (startDate) filter.collected_at.$gte = new Date(startDate);
+      if (endDate) filter.collected_at.$lte = new Date(endDate);
+    }
+    
+    if (bin_id) filter.bin_id = bin_id;
+    if (staff_id) filter.staff_id = staff_id;
+    if (waste_type) filter.waste_type = waste_type;
+    if (status) filter.status = status;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const logs = await CollectionLog.find(filter)
+      .sort({ collected_at: -1 })
+      .skip(skip)
+      .limit(parseInt(limit))
+      .populate('bin_id', 'bin_name location bin_type fill_level')
+      .populate('staff_id', 'full_name username email role');
+
+    const total = await CollectionLog.countDocuments(filter);
+
+    // Get weekly summary
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const startOfWeek = new Date(today);
+    startOfWeek.setDate(today.getDate() - today.getDay());
+
+    const weeklyStats = await CollectionLog.aggregate([
+      {
+        $match: {
+          collected_at: { $gte: startOfWeek }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalWeight: { $sum: '$weight_kg' },
+          totalCollections: { $sum: 1 },
+          recyclableWeight: {
+            $sum: {
+              $cond: [{ $eq: ['$waste_type', 'Recyclable'] }, '$weight_kg', 0]
+            }
+          },
+          biodegradableWeight: {
+            $sum: {
+              $cond: [{ $eq: ['$waste_type', 'Biodegradable'] }, '$weight_kg', 0]
+            }
+          },
+          nonBiodegradableWeight: {
+            $sum: {
+              $cond: [{ $eq: ['$waste_type', 'Non-Biodegradable'] }, '$weight_kg', 0]
+            }
+          }
+        }
+      }
+    ]);
+
+    res.json({
+      success: true,
+      data: logs,
+      pagination: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        pages: Math.ceil(total / parseInt(limit))
+      },
+      summary: {
+        weeklyCollections: weeklyStats[0]?.totalCollections || 0,
+        weeklyWeight: (weeklyStats[0]?.totalWeight || 0).toFixed(2),
+        recyclableWeight: (weeklyStats[0]?.recyclableWeight || 0).toFixed(2),
+        biodegradableWeight: (weeklyStats[0]?.biodegradableWeight || 0).toFixed(2),
+        nonBiodegradableWeight: (weeklyStats[0]?.nonBiodegradableWeight || 0).toFixed(2)
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching collection logs:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get single collection log by ID
+app.get('/api/collections/:id', auth, async (req, res) => {
+  try {
+    const log = await CollectionLog.findById(req.params.id)
+      .populate('bin_id', 'bin_name location bin_type')
+      .populate('staff_id', 'full_name username');
+    
+    if (!log) {
+      return res.status(404).json({ success: false, error: 'Collection log not found' });
+    }
+    
+    res.json({ success: true, data: log });
+  } catch (error) {
+    console.error('Error fetching collection log:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Test endpoint to check collection logs data
+app.get('/api/collections/test', auth, async (req, res) => {
+  try {
+    const count = await CollectionLog.countDocuments();
+    const sample = await CollectionLog.findOne().populate('bin_id', 'bin_name').populate('staff_id', 'full_name');
+    
+    res.json({
+      success: true,
+      count: count,
+      sample: sample,
+      message: `Found ${count} collection logs in database`
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Test endpoint to check reward sessions data
+app.get('/api/rewards/test', auth, async (req, res) => {
+  try {
+    const count = await RewardSession.countDocuments();
+    const sample = await RewardSession.findOne()
+      .populate('event_id', 'waste_type weight_kg')
+      .populate('port_id', 'name')
+      .populate('user_id', 'full_name');
+    
+    res.json({
+      success: true,
+      count: count,
+      sample: sample,
+      message: `Found ${count} reward sessions in database`
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Create new collection log
+app.post('/api/collections', auth, async (req, res) => {
+  try {
+    const { bin_id, waste_type, weight_kg, destination, status, notes } = req.body;
+
+    if (!bin_id || !waste_type || !weight_kg) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'bin_id, waste_type, and weight_kg are required' 
+      });
+    }
+
+    // Check if bin exists
+    const bin = await Bin.findById(bin_id);
+    if (!bin) {
+      return res.status(404).json({ success: false, error: 'Bin not found' });
+    }
+
+    const collectionLog = new CollectionLog({
+      bin_id,
+      staff_id: req.user.userId,
+      waste_type,
+      weight_kg,
+      destination: destination || 'Recycling Center',
+      status: status || 'Done',
+      notes: notes || '',
+      collected_at: new Date()
+    });
+
+    await collectionLog.save();
+
+    // Update bin fill level (reset after collection)
+    await Bin.findByIdAndUpdate(bin_id, {
+      fill_level: 0,
+      weight_kg: 0,
+      status: 'Active',
+      last_updated: new Date()
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Collection logged successfully',
+      data: collectionLog
+    });
+  } catch (error) {
+    console.error('Error creating collection log:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Update collection log
+app.put('/api/collections/:id', auth, async (req, res) => {
+  try {
+    const { waste_type, weight_kg, status, destination, notes } = req.body;
+    
+    const log = await CollectionLog.findById(req.params.id);
+    if (!log) {
+      return res.status(404).json({ success: false, error: 'Collection log not found' });
+    }
+
+    if (waste_type) log.waste_type = waste_type;
+    if (weight_kg) log.weight_kg = weight_kg;
+    if (status) log.status = status;
+    if (destination) log.destination = destination;
+    if (notes !== undefined) log.notes = notes;
+
+    await log.save();
+    
+    res.json({
+      success: true,
+      message: 'Collection log updated successfully',
+      data: log
+    });
+  } catch (error) {
+    console.error('Error updating collection log:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Delete collection log
+app.delete('/api/collections/:id', auth, async (req, res) => {
+  try {
+    const log = await CollectionLog.findByIdAndDelete(req.params.id);
+    if (!log) {
+      return res.status(404).json({ success: false, error: 'Collection log not found' });
+    }
+    
+    res.json({ success: true, message: 'Collection log deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting collection log:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get collection statistics for dashboard
+app.get('/api/collections/stats/dashboard', auth, async (req, res) => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const startOfWeek = new Date(today);
+    startOfWeek.setDate(today.getDate() - today.getDay());
+    
+    const startOfMonth = new Date(today);
+    startOfMonth.setDate(1);
+
+    // Today's stats
+    const todayStats = await CollectionLog.aggregate([
+      {
+        $match: {
+          collected_at: { $gte: today }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalWeight: { $sum: '$weight_kg' },
+          totalCollections: { $sum: 1 },
+          recyclable: {
+            $sum: {
+              $cond: [{ $eq: ['$waste_type', 'Recyclable'] }, 1, 0]
+            }
+          },
+          biodegradable: {
+            $sum: {
+              $cond: [{ $eq: ['$waste_type', 'Biodegradable'] }, 1, 0]
+            }
+          },
+          nonBiodegradable: {
+            $sum: {
+              $cond: [{ $eq: ['$waste_type', 'Non-Biodegradable'] }, 1, 0]
+            }
+          }
+        }
+      }
+    ]);
+
+    // Get bins that need collection (fill_level >= 75)
+    const binsNeedingCollection = await Bin.countDocuments({
+      fill_level: { $gte: 75 },
+      status: { $ne: 'Full' }
+    });
+
+    // Helper function to get next pickup date
+    function getNextPickupDate() {
+      const todayDate = new Date();
+      const day = todayDate.getDay();
+      
+      let nextPickup = new Date(todayDate);
+      
+      if (day === 6) { // Saturday
+        nextPickup.setDate(todayDate.getDate() + 3);
+      } else if (day === 0) { // Sunday
+        nextPickup.setDate(todayDate.getDate() + 2);
+      } else if (day === 1) { // Monday
+        nextPickup.setDate(todayDate.getDate() + 1);
+      } else if (day === 2) { // Tuesday
+        nextPickup.setDate(todayDate.getDate() + 4);
+      } else if (day === 3) { // Wednesday
+        nextPickup.setDate(todayDate.getDate() + 3);
+      } else if (day === 4) { // Thursday
+        nextPickup.setDate(todayDate.getDate() + 2);
+      } else if (day === 5) { // Friday
+        nextPickup.setDate(todayDate.getDate() + 1);
+      }
+      
+      return nextPickup.toLocaleDateString('en-PH', { 
+        weekday: 'long', 
+        month: 'short', 
+        day: 'numeric' 
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        today: {
+          totalCollections: todayStats[0]?.totalCollections || 0,
+          totalWeight: (todayStats[0]?.totalWeight || 0).toFixed(2),
+          recyclable: todayStats[0]?.recyclable || 0,
+          biodegradable: todayStats[0]?.biodegradable || 0,
+          nonBiodegradable: todayStats[0]?.nonBiodegradable || 0
+        },
+        binsNeedingCollection,
+        nextPickup: getNextPickupDate()
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching collection stats:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ✅ ============================================================
+// ✅ REWARD SESSIONS ROUTES (AUTHENTICATION REQUIRED)
+// ✅ ============================================================
+
+// Get user's own reward sessions
+app.get('/api/rewards/my-rewards', auth, async (req, res) => {
+  try {
+    const { limit = 50, status } = req.query;
+    
+    const filter = { user_id: req.user.userId };
+    if (status) filter.result = status;
+
+    const rewards = await RewardSession.find(filter)
+      .sort({ started_at: -1 })
+      .limit(parseInt(limit))
+      .populate('event_id', 'waste_type weight_kg detected_at')
+      .populate('port_id', 'name status');
+
+    // Get user's total points
+    const user = await User.findById(req.user.userId);
+    
+    // Get today's rewards count
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const todayRewards = await RewardSession.countDocuments({
+      user_id: req.user.userId,
+      started_at: { $gte: today },
+      result: 'Granted'
+    });
+
+    // Calculate total points earned
+    const totalPointsEarned = await RewardSession.aggregate([
+      {
+        $match: {
+          user_id: req.user.userId,
+          result: 'Granted'
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: '$points_earned' }
+        }
+      }
+    ]);
+
+    res.json({
+      success: true,
+      data: rewards,
+      stats: {
+        totalPoints: user?.points || 0,
+        totalPointsEarned: totalPointsEarned[0]?.total || 0,
+        todayRewards,
+        totalRewards: rewards.length
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching user rewards:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get all reward sessions (admin/staff only)
+app.get('/api/rewards/all', auth, async (req, res) => {
+  try {
+    const { 
+      startDate, 
+      endDate, 
+      result, 
+      reward_type,
+      limit = 100,
+      page = 1
+    } = req.query;
+
+    const filter = {};
+    
+    if (startDate || endDate) {
+      filter.started_at = {};
+      if (startDate) filter.started_at.$gte = new Date(startDate);
+      if (endDate) filter.started_at.$lte = new Date(endDate);
+    }
+    
+    if (result) filter.result = result;
+    if (reward_type) filter.reward_type = reward_type;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const sessions = await RewardSession.find(filter)
+      .sort({ started_at: -1 })
+      .skip(skip)
+      .limit(parseInt(limit))
+      .populate('user_id', 'full_name username email')
+      .populate('event_id', 'waste_type weight_kg detected_at')
+      .populate('port_id', 'name');
+
+    const total = await RewardSession.countDocuments(filter);
+
+    // Get statistics
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const stats = await RewardSession.aggregate([
+      {
+        $match: {
+          started_at: { $gte: today }
+        }
+      },
+      {
+        $group: {
+          _id: '$result',
+          count: { $sum: 1 },
+          totalPoints: { $sum: '$points_earned' }
+        }
+      }
+    ]);
+
+    res.json({
+      success: true,
+      data: sessions,
+      pagination: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        pages: Math.ceil(total / parseInt(limit))
+      },
+      stats: {
+        granted: stats.find(s => s._id === 'Granted')?.count || 0,
+        declined: stats.find(s => s._id === 'Declined')?.count || 0,
+        pending: stats.find(s => s._id === 'Pending')?.count || 0,
+        totalPoints: stats.reduce((sum, s) => sum + (s.totalPoints || 0), 0)
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching reward sessions:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get single reward session by ID
+app.get('/api/rewards/:id', auth, async (req, res) => {
+  try {
+    const session = await RewardSession.findById(req.params.id)
+      .populate('user_id', 'full_name username email points')
+      .populate('event_id', 'waste_type weight_kg detected_at item_label')
+      .populate('port_id', 'name status');
+    
+    if (!session) {
+      return res.status(404).json({ success: false, error: 'Reward session not found' });
+    }
+    
+    // Check if user has permission to view this session
+    if (session.user_id._id.toString() !== req.user.userId && req.user.role !== 'Administrator') {
+      return res.status(403).json({ success: false, error: 'Access denied' });
+    }
+    
+    res.json({ success: true, data: session });
+  } catch (error) {
+    console.error('Error fetching reward session:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Create new reward session (when waste is disposed)
+app.post('/api/rewards', auth, async (req, res) => {
+  try {
+    const { event_id, port_id, duration_min, points_earned, description } = req.body;
+
+    if (!event_id) {
+      return res.status(400).json({ success: false, error: 'event_id is required' });
+    }
+
+    // Check if waste event exists
+    const wasteEvent = await WasteEvent.findById(event_id);
+    if (!wasteEvent) {
+      return res.status(404).json({ success: false, error: 'Waste event not found' });
+    }
+
+    // Check if port is available (if provided)
+    let port = null;
+    if (port_id) {
+      port = await ChargingPort.findById(port_id);
+      if (port && port.status !== 'Available') {
+        return res.status(400).json({ success: false, error: 'Charging port is not available' });
+      }
+    }
+
+    // Calculate points if not provided (10 points per kg for Recyclable, 5 for Biodegradable, 2 for Non-Biodegradable)
+    let finalPoints = points_earned;
+    if (!finalPoints) {
+      const pointsMap = { 'Recyclable': 10, 'Biodegradable': 5, 'Non-Biodegradable': 2 };
+      finalPoints = Math.floor(wasteEvent.weight_kg * (pointsMap[wasteEvent.waste_type] || 5));
+    }
+
+    const rewardSession = new RewardSession({
+      event_id,
+      port_id: port_id || null,
+      user_id: req.user.userId,
+      duration_min: duration_min || 20,
+      points_earned: finalPoints,
+      reward_type: 'disposal_reward',
+      result: 'Granted',
+      description: description || `Reward for disposing ${wasteEvent.weight_kg}kg of ${wasteEvent.waste_type} waste`,
+      started_at: new Date()
+    });
+
+    await rewardSession.save();
+
+    // Update user points
+    await User.findByIdAndUpdate(req.user.userId, {
+      $inc: { points: finalPoints, total_rewards: 1 },
+      last_reward_at: new Date()
+    });
+
+    // Update port status if used
+    if (port) {
+      port.status = 'In use';
+      port.current_session_id = rewardSession._id;
+      port.total_sessions += 1;
+      port.last_used_at = new Date();
+      await port.save();
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Reward session created successfully',
+      data: rewardSession
+    });
+  } catch (error) {
+    console.error('Error creating reward session:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// End reward session (release charging port)
+app.put('/api/rewards/:id/end', auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const rewardSession = await RewardSession.findById(id);
+    if (!rewardSession) {
+      return res.status(404).json({ success: false, error: 'Reward session not found' });
+    }
+
+    // Check permission
+    if (rewardSession.user_id.toString() !== req.user.userId && req.user.role !== 'Administrator') {
+      return res.status(403).json({ success: false, error: 'Access denied' });
+    }
+
+    // Update session
+    rewardSession.ended_at = new Date();
+    rewardSession.duration_min = Math.ceil((rewardSession.ended_at - rewardSession.started_at) / 60000);
+    await rewardSession.save();
+
+    // Release charging port
+    if (rewardSession.port_id) {
+      await ChargingPort.findByIdAndUpdate(rewardSession.port_id, {
+        status: 'Available',
+        current_session_id: null
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Reward session ended successfully',
+      data: rewardSession
+    });
+  } catch (error) {
+    console.error('Error ending reward session:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Redeem points for rewards
+app.post('/api/rewards/redeem', auth, async (req, res) => {
+  try {
+    const { pointsToRedeem, rewardItem, description } = req.body;
+    
+    if (!pointsToRedeem || pointsToRedeem <= 0) {
+      return res.status(400).json({ success: false, error: 'Valid points to redeem are required' });
+    }
+    
+    const user = await User.findById(req.user.userId);
+    
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+    
+    if (user.points < pointsToRedeem) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Insufficient points',
+        availablePoints: user.points,
+        requestedPoints: pointsToRedeem
+      });
+    }
+    
+    // Deduct points from user
+    await User.findByIdAndUpdate(req.user.userId, {
+      $inc: { points: -pointsToRedeem }
+    });
+    
+    // Create reward session for redemption
+    const rewardSession = new RewardSession({
+      user_id: req.user.userId,
+      points_earned: -pointsToRedeem,
+      reward_type: 'points_redeemed',
+      result: 'Granted',
+      description: description || `Redeemed ${pointsToRedeem} points for ${rewardItem || 'reward item'}`,
+      started_at: new Date()
+    });
+    await rewardSession.save();
+    
+    res.json({ 
+      success: true, 
+      message: 'Points redeemed successfully',
+      data: rewardSession,
+      remainingPoints: user.points - pointsToRedeem
+    });
+  } catch (error) {
+    console.error('Error redeeming points:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get reward dashboard statistics
+app.get('/api/rewards/dashboard/stats', auth, async (req, res) => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const startOfWeek = new Date(today);
+    startOfWeek.setDate(today.getDate() - today.getDay());
+
+    // Today's statistics
+    const todayStats = await RewardSession.aggregate([
+      {
+        $match: {
+          started_at: { $gte: today }
+        }
+      },
+      {
+        $group: {
+          _id: '$result',
+          count: { $sum: 1 },
+          totalPoints: { $sum: '$points_earned' }
+        }
+      }
+    ]);
+
+    // Active charging sessions
+    const activePorts = await ChargingPort.find({ status: 'In use' })
+      .populate('current_session_id', 'user_id started_at');
+
+    // Weekly statistics
+    const weeklyStats = await RewardSession.aggregate([
+      {
+        $match: {
+          started_at: { $gte: startOfWeek },
+          result: 'Granted'
+        }
+      },
+      {
+        $group: {
+          _id: {
+            day: { $dayOfWeek: '$started_at' }
+          },
+          count: { $sum: 1 },
+          totalPoints: { $sum: '$points_earned' }
+        }
+      }
+    ]);
+
+    // Total rewards summary
+    const totalSummary = await RewardSession.aggregate([
+      {
+        $group: {
+          _id: '$result',
+          count: { $sum: 1 },
+          totalPoints: { $sum: '$points_earned' }
+        }
+      }
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        today: {
+          granted: todayStats.find(s => s._id === 'Granted')?.count || 0,
+          declined: todayStats.find(s => s._id === 'Declined')?.count || 0,
+          pending: todayStats.find(s => s._id === 'Pending')?.count || 0,
+          pointsEarned: todayStats.find(s => s._id === 'Granted')?.totalPoints || 0
+        },
+        activeSessions: activePorts.length,
+        weekly: weeklyStats,
+        total: {
+          granted: totalSummary.find(s => s._id === 'Granted')?.count || 0,
+          declined: totalSummary.find(s => s._id === 'Declined')?.count || 0,
+          totalPoints: totalSummary.reduce((sum, s) => sum + (s.totalPoints || 0), 0)
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching reward dashboard stats:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // ─────────────────────────────────────────────────────────────
 // 7. AUTH MIDDLEWARE
 // ─────────────────────────────────────────────────────────────
@@ -443,7 +1321,7 @@ async function seedData() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// 10. ROUTES
+// 10. ROUTES (EXISTING ROUTES CONTINUE HERE)
 // ─────────────────────────────────────────────────────────────
 
 // ── Health ─────────────────────────────────────────────────
@@ -494,7 +1372,7 @@ app.post('/api/login', async (req, res) => {
 
     res.json({
       token,
-      user: { id: user._id, fullName: user.full_name, email: user.email, role: user.role },
+      user: { id: user._id, fullName: user.full_name, email: user.email, role: user.role, points: user.points || 0 },
     });
   } catch (err) {
     console.error('LOGIN ERROR:', err);
@@ -700,7 +1578,6 @@ app.post('/api/waste-events', laptopAuth, async (req, res) => {
     });
 
     // 2. Update bin fill level and weight
-    // Adjust the multiplier (×2) to match your actual sensor calibration
     const newFill   = Math.min(100, bin.fill_level + (weight_kg * 2));
     const newStatus = newFill >= 90 ? 'Full' : bin.status;
     await Bin.findByIdAndUpdate(bin_id, {
@@ -765,7 +1642,7 @@ app.get('/api/waste-events', auth, async (req, res) => {
   }
 });
 
-// ── Collection Logs ────────────────────────────────────────
+// ── Collection Logs (existing) ────────────────────────────────────────
 
 app.get('/api/collection-logs', auth, async (req, res) => {
   try {
@@ -827,7 +1704,7 @@ app.post('/api/collection-logs', auth, async (req, res) => {
   }
 });
 
-// ── Reward Sessions ────────────────────────────────────────
+// ── Reward Sessions (existing) ────────────────────────────────────────
 
 app.get('/api/reward-sessions', auth, async (req, res) => {
   try {
