@@ -105,12 +105,12 @@ const collectionLogSchema = new mongoose.Schema({
 
 // ── Reward Sessions ─────────────────────────────────────────
 const rewardSessionSchema = new mongoose.Schema({
-  event_id:     { type: mongoose.Schema.Types.ObjectId, ref: 'WasteEvent', required: true },
-  port_id:      { type: mongoose.Schema.Types.ObjectId, ref: 'ChargingPort', required: true },
-  user_id:      { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  event_id:     { type: mongoose.Schema.Types.ObjectId, ref: 'WasteEvent' },
+  port_id:      { type: mongoose.Schema.Types.ObjectId, ref: 'ChargingPort' },
+  user_id:      { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   started_at:   { type: Date, default: Date.now },
   duration_min: { type: Number, default: 20 },
-  result:       { type: String, enum: ['Granted', 'Declined', 'Pending'], default: 'Pending' },
+  result:       { type: String, enum: ['Granted', 'Declined', 'Pending'], default: 'Granted' },
   points_earned: { type: Number, default: 0 },
   reward_type:  { type: String, default: 'disposal_reward' },
   description:  { type: String, default: '' },
@@ -169,7 +169,7 @@ const MaintenanceLog     = mongoose.model('MaintenanceLog', maintenanceLogSchema
 const Settings           = mongoose.model('Settings', settingsSchema);
 
 // ─────────────────────────────────────────────────────────────
-// 7. AUTH MIDDLEWARE (DEFINED BEFORE ROUTES)
+// 7. AUTH MIDDLEWARE
 // ─────────────────────────────────────────────────────────────
 const auth = (req, res, next) => {
   const token = req.headers['authorization']?.split(' ')[1];
@@ -201,7 +201,7 @@ const generateOtp = () => Math.floor(100000 + Math.random() * 900000).toString()
 const mapBin = (bin) => ({ ...bin.toObject(), bin_id: bin._id });
 
 // ─────────────────────────────────────────────────────────────
-// 9. PUBLIC ENDPOINTS (NO AUTH REQUIRED)
+// 9. PUBLIC ENDPOINTS
 // ─────────────────────────────────────────────────────────────
 
 app.get('/api/health', (req, res) => {
@@ -256,7 +256,7 @@ app.get('/api/waste-events/public/latest', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
-// 10. AUTH ROUTES (NO AUTH NEEDED)
+// 10. AUTH ROUTES
 // ─────────────────────────────────────────────────────────────
 
 app.post('/api/register', async (req, res) => {
@@ -347,87 +347,59 @@ app.post('/api/reset-password', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
-// DEBUG ENDPOINTS (Check database connections)
+// 11. COLLECTION LOGS ROUTES (WORKING VERSION)
 // ─────────────────────────────────────────────────────────────
 
-// Debug endpoint to check collection logs data (NO AUTH for testing)
-app.get('/api/debug/collections', async (req, res) => {
-  try {
-    const count = await CollectionLog.countDocuments();
-    const allLogs = await CollectionLog.find().limit(10);
-    res.json({
-      success: true,
-      count: count,
-      logs: allLogs,
-      message: `Found ${count} collection logs in database`
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// Debug endpoint to check reward sessions data (NO AUTH for testing)
-app.get('/api/debug/rewards', async (req, res) => {
-  try {
-    const count = await RewardSession.countDocuments();
-    const allRewards = await RewardSession.find().limit(10);
-    res.json({
-      success: true,
-      count: count,
-      rewards: allRewards,
-      message: `Found ${count} reward sessions in database`
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// Debug endpoint to check all collections
-app.get('/api/debug/all', async (req, res) => {
-  try {
-    const collections = await mongoose.connection.db.listCollections().toArray();
-    const collectionNames = collections.map(c => c.name);
-    
-    const stats = {};
-    for (const name of collectionNames) {
-      const count = await mongoose.connection.db.collection(name).countDocuments();
-      stats[name] = count;
-    }
-    
-    res.json({
-      success: true,
-      collections: collectionNames,
-      counts: stats
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// ─────────────────────────────────────────────────────────────
-// 11. COLLECTION LOGS ROUTES (AUTH REQUIRED)
-// ─────────────────────────────────────────────────────────────
-
-// Get all collection logs
-app.get('/api/collections', auth, async (req, res) => {
+// Get all collection logs - PUBLIC for testing
+app.get('/api/collections', async (req, res) => {
   try {
     const logs = await CollectionLog.find()
       .sort({ collected_at: -1 })
       .populate('bin_id', 'bin_name location')
-      .populate('staff_id', 'full_name');
+      .populate('staff_id', 'full_name username');
     
-    res.json({ success: true, data: logs });
+    // Format data for frontend
+    const formattedLogs = logs.map(log => ({
+      id: log._id,
+      datetime: log.collected_at,
+      bin: log.bin_id?.bin_name || 'Unknown Bin',
+      staff: log.staff_id?.full_name || 'Staff',
+      type: log.waste_type,
+      weight: `${log.weight_kg} kg`,
+      status: log.status,
+      destination: log.destination || 'Recycling Center'
+    }));
+    
+    // Calculate statistics
+    const totalWeight = logs.reduce((sum, log) => sum + (log.weight_kg || 0), 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayLogs = logs.filter(log => new Date(log.collected_at) >= today);
+    const todayWeight = todayLogs.reduce((sum, log) => sum + (log.weight_kg || 0), 0);
+    
+    res.json({
+      success: true,
+      data: formattedLogs,
+      stats: {
+        totalCollections: logs.length,
+        totalWeight: totalWeight,
+        todayCollections: todayLogs.length,
+        todayWeight: todayWeight,
+        binsNeedingCollection: await Bin.countDocuments({ fill_level: { $gte: 75 } })
+      }
+    });
   } catch (error) {
+    console.error('Error fetching collection logs:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
 // Get single collection log
-app.get('/api/collections/:id', auth, async (req, res) => {
+app.get('/api/collections/:id', async (req, res) => {
   try {
     const log = await CollectionLog.findById(req.params.id)
       .populate('bin_id', 'bin_name location')
-      .populate('staff_id', 'full_name');
+      .populate('staff_id', 'full_name username');
     
     if (!log) return res.status(404).json({ success: false, error: 'Not found' });
     res.json({ success: true, data: log });
@@ -461,17 +433,6 @@ app.post('/api/collections', auth, async (req, res) => {
   }
 });
 
-// Update collection log
-app.put('/api/collections/:id', auth, async (req, res) => {
-  try {
-    const log = await CollectionLog.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    if (!log) return res.status(404).json({ success: false, error: 'Not found' });
-    res.json({ success: true, data: log });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
 // Delete collection log
 app.delete('/api/collections/:id', auth, async (req, res) => {
   try {
@@ -483,21 +444,27 @@ app.delete('/api/collections/:id', auth, async (req, res) => {
   }
 });
 
-// Collection stats
-app.get('/api/collections/stats/dashboard', auth, async (req, res) => {
+// Collection dashboard stats
+app.get('/api/collections/stats/dashboard', async (req, res) => {
   try {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
-    const todayCount = await CollectionLog.countDocuments({ collected_at: { $gte: today } });
+    const totalCollections = await CollectionLog.countDocuments();
+    const todayCollections = await CollectionLog.countDocuments({ collected_at: { $gte: today } });
     const totalWeight = await CollectionLog.aggregate([{ $group: { _id: null, total: { $sum: '$weight_kg' } } }]);
+    const todayWeight = await CollectionLog.aggregate([
+      { $match: { collected_at: { $gte: today } } },
+      { $group: { _id: null, total: { $sum: '$weight_kg' } } }
+    ]);
     
     res.json({
       success: true,
       data: {
-        today: { totalCollections: todayCount, totalWeight: totalWeight[0]?.total || 0 },
+        total: { collections: totalCollections, weight: totalWeight[0]?.total || 0 },
+        today: { collections: todayCollections, weight: todayWeight[0]?.total || 0 },
         binsNeedingCollection: await Bin.countDocuments({ fill_level: { $gte: 75 } }),
-        nextPickup: 'Tuesday'
+        nextPickup: 'Tuesday, Saturday'
       }
     });
   } catch (error) {
@@ -505,66 +472,59 @@ app.get('/api/collections/stats/dashboard', auth, async (req, res) => {
   }
 });
 
-// Test endpoint for collections
-app.get('/api/collections/test', auth, async (req, res) => {
-  try {
-    const count = await CollectionLog.countDocuments();
-    const sample = await CollectionLog.findOne().populate('bin_id', 'bin_name').populate('staff_id', 'full_name');
-    res.json({ success: true, count, sample });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
 // ─────────────────────────────────────────────────────────────
-// 12. REWARD SESSIONS ROUTES (AUTH REQUIRED)
+// 12. REWARD SESSIONS ROUTES (WORKING VERSION)
 // ─────────────────────────────────────────────────────────────
 
-// Get user's rewards
-app.get('/api/rewards/my-rewards', auth, async (req, res) => {
-  try {
-    const rewards = await RewardSession.find({ user_id: req.user.userId })
-      .sort({ started_at: -1 })
-      .populate('event_id', 'waste_type weight_kg')
-      .populate('port_id', 'name');
-    
-    const user = await User.findById(req.user.userId);
-    
-    res.json({
-      success: true,
-      data: rewards,
-      stats: {
-        totalPoints: user?.points || 0,
-        totalRewards: rewards.length
-      }
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// Get all rewards (admin)
-app.get('/api/rewards/all', auth, async (req, res) => {
+// Get all reward sessions - PUBLIC for testing
+app.get('/api/rewards', async (req, res) => {
   try {
     const rewards = await RewardSession.find()
       .sort({ started_at: -1 })
-      .populate('user_id', 'full_name username')
       .populate('event_id', 'waste_type weight_kg')
       .populate('port_id', 'name');
     
-    res.json({ success: true, data: rewards });
+    // Format data for frontend
+    const formattedRewards = rewards.map(reward => ({
+      id: reward._id,
+      time: reward.started_at,
+      duration: `${reward.duration_min} min`,
+      result: reward.result,
+      port: reward.port_id?.name || 'Unknown Port',
+      wasteType: reward.event_id?.waste_type || 'Unknown',
+      weight: reward.event_id?.weight_kg ? `${reward.event_id.weight_kg} kg` : '—',
+      points: reward.points_earned
+    }));
+    
+    // Calculate statistics
+    const grantedRewards = rewards.filter(r => r.result === 'Granted');
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayRewards = rewards.filter(r => new Date(r.started_at) >= today && r.result === 'Granted');
+    
+    res.json({
+      success: true,
+      data: formattedRewards,
+      stats: {
+        totalRewards: rewards.length,
+        grantedRewards: grantedRewards.length,
+        todayRewards: todayRewards.length,
+        totalPoints: grantedRewards.reduce((sum, r) => sum + (r.points_earned || 0), 0),
+        activeSessions: await ChargingPort.countDocuments({ status: 'In use' })
+      }
+    });
   } catch (error) {
+    console.error('Error fetching rewards:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// Get single reward
-app.get('/api/rewards/:id', auth, async (req, res) => {
+// Get single reward session
+app.get('/api/rewards/:id', async (req, res) => {
   try {
     const reward = await RewardSession.findById(req.params.id)
-      .populate('user_id', 'full_name')
-      .populate('event_id', 'waste_type weight_kg')
-      .populate('port_id', 'name');
+      .populate('event_id', 'waste_type weight_kg item_label')
+      .populate('port_id', 'name status');
     
     if (!reward) return res.status(404).json({ success: false, error: 'Not found' });
     res.json({ success: true, data: reward });
@@ -591,7 +551,7 @@ app.post('/api/rewards', auth, async (req, res) => {
     await reward.save();
     
     // Update user points
-    await User.findByIdAndUpdate(req.user.userId, { $inc: { points: points_earned || 10 } });
+    await User.findByIdAndUpdate(req.user.userId, { $inc: { points: points_earned || 10, total_rewards: 1 } });
     
     res.status(201).json({ success: true, data: reward });
   } catch (error) {
@@ -620,64 +580,31 @@ app.put('/api/rewards/:id/end', auth, async (req, res) => {
   }
 });
 
-// Redeem points
-app.post('/api/rewards/redeem', auth, async (req, res) => {
-  try {
-    const { pointsToRedeem, rewardItem } = req.body;
-    const user = await User.findById(req.user.userId);
-    
-    if (user.points < pointsToRedeem) {
-      return res.status(400).json({ success: false, error: 'Insufficient points' });
-    }
-    
-    await User.findByIdAndUpdate(req.user.userId, { $inc: { points: -pointsToRedeem } });
-    
-    const reward = new RewardSession({
-      user_id: req.user.userId,
-      points_earned: -pointsToRedeem,
-      reward_type: 'points_redeemed',
-      result: 'Granted',
-      description: `Redeemed ${pointsToRedeem} points for ${rewardItem}`
-    });
-    await reward.save();
-    
-    res.json({ success: true, message: 'Points redeemed', remainingPoints: user.points - pointsToRedeem });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
 // Reward dashboard stats
-app.get('/api/rewards/dashboard/stats', auth, async (req, res) => {
+app.get('/api/rewards/dashboard/stats', async (req, res) => {
   try {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
-    const todayCount = await RewardSession.countDocuments({ started_at: { $gte: today }, result: 'Granted' });
+    const totalRewards = await RewardSession.countDocuments({ result: 'Granted' });
+    const todayRewards = await RewardSession.countDocuments({ started_at: { $gte: today }, result: 'Granted' });
     const totalPoints = await RewardSession.aggregate([
       { $match: { result: 'Granted' } },
+      { $group: { _id: null, total: { $sum: '$points_earned' } } }
+    ]);
+    const todayPoints = await RewardSession.aggregate([
+      { $match: { started_at: { $gte: today }, result: 'Granted' } },
       { $group: { _id: null, total: { $sum: '$points_earned' } } }
     ]);
     
     res.json({
       success: true,
       data: {
-        today: { granted: todayCount, pointsEarned: 0 },
-        activeSessions: 0,
-        total: { granted: await RewardSession.countDocuments({ result: 'Granted' }), totalPoints: totalPoints[0]?.total || 0 }
+        total: { granted: totalRewards, points: totalPoints[0]?.total || 0 },
+        today: { granted: todayRewards, points: todayPoints[0]?.total || 0 },
+        activeSessions: await ChargingPort.countDocuments({ status: 'In use' })
       }
     });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// Test endpoint for rewards
-app.get('/api/rewards/test', auth, async (req, res) => {
-  try {
-    const count = await RewardSession.countDocuments();
-    const sample = await RewardSession.findOne().populate('user_id', 'full_name');
-    res.json({ success: true, count, sample });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -784,4 +711,6 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 Health: http://localhost:${PORT}/api/health`);
+  console.log(`📋 Collections API: http://localhost:${PORT}/api/collections`);
+  console.log(`🎁 Rewards API: http://localhost:${PORT}/api/rewards`);
 });
