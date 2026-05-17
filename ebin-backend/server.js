@@ -156,13 +156,13 @@ const settingsSchema = new mongoose.Schema({
 });
 
 // ─────────────────────────────────────────────────────────────
-// 6. MODELS
+// 6. MODELS (WITH CORRECT COLLECTION NAMES)
 // ─────────────────────────────────────────────────────────────
 const User               = mongoose.model('User', userSchema);
 const Bin                = mongoose.model('Bin', binSchema);
 const WasteEvent         = mongoose.model('WasteEvent', wasteEventSchema);
-const CollectionLog      = mongoose.model('CollectionLog', collectionLogSchema);
-const RewardSession      = mongoose.model('RewardSession', rewardSessionSchema);
+const CollectionLog      = mongoose.model('CollectionLog', collectionLogSchema, 'collectionLogs');
+const RewardSession      = mongoose.model('RewardSession', rewardSessionSchema, 'rewardSessions');
 const ChargingPort       = mongoose.model('ChargingPort', chargingPortSchema);
 const MaintenanceRequest = mongoose.model('MaintenanceRequest', maintenanceRequestSchema);
 const MaintenanceLog     = mongoose.model('MaintenanceLog', maintenanceLogSchema);
@@ -347,10 +347,10 @@ app.post('/api/reset-password', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
-// 11. COLLECTION LOGS ROUTES (WORKING VERSION)
+// 11. COLLECTION LOGS ROUTES
 // ─────────────────────────────────────────────────────────────
 
-// Get all collection logs - PUBLIC for testing
+// Get all collection logs
 app.get('/api/collections', async (req, res) => {
   try {
     const logs = await CollectionLog.find()
@@ -358,7 +358,6 @@ app.get('/api/collections', async (req, res) => {
       .populate('bin_id', 'bin_name location')
       .populate('staff_id', 'full_name username');
     
-    // Format data for frontend
     const formattedLogs = logs.map(log => ({
       id: log._id,
       datetime: log.collected_at,
@@ -370,12 +369,10 @@ app.get('/api/collections', async (req, res) => {
       destination: log.destination || 'Recycling Center'
     }));
     
-    // Calculate statistics
     const totalWeight = logs.reduce((sum, log) => sum + (log.weight_kg || 0), 0);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const todayLogs = logs.filter(log => new Date(log.collected_at) >= today);
-    const todayWeight = todayLogs.reduce((sum, log) => sum + (log.weight_kg || 0), 0);
     
     res.json({
       success: true,
@@ -384,7 +381,7 @@ app.get('/api/collections', async (req, res) => {
         totalCollections: logs.length,
         totalWeight: totalWeight,
         todayCollections: todayLogs.length,
-        todayWeight: todayWeight,
+        todayWeight: todayLogs.reduce((sum, log) => sum + (log.weight_kg || 0), 0),
         binsNeedingCollection: await Bin.countDocuments({ fill_level: { $gte: 75 } })
       }
     });
@@ -423,8 +420,6 @@ app.post('/api/collections', auth, async (req, res) => {
     });
     
     await log.save();
-    
-    // Reset bin after collection
     await Bin.findByIdAndUpdate(bin_id, { fill_level: 0, weight_kg: 0, status: 'Active' });
     
     res.status(201).json({ success: true, data: log });
@@ -473,10 +468,10 @@ app.get('/api/collections/stats/dashboard', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
-// 12. REWARD SESSIONS ROUTES (WORKING VERSION)
+// 12. REWARD SESSIONS ROUTES
 // ─────────────────────────────────────────────────────────────
 
-// Get all reward sessions - PUBLIC for testing
+// Get all reward sessions
 app.get('/api/rewards', async (req, res) => {
   try {
     const rewards = await RewardSession.find()
@@ -484,7 +479,6 @@ app.get('/api/rewards', async (req, res) => {
       .populate('event_id', 'waste_type weight_kg')
       .populate('port_id', 'name');
     
-    // Format data for frontend
     const formattedRewards = rewards.map(reward => ({
       id: reward._id,
       time: reward.started_at,
@@ -496,7 +490,6 @@ app.get('/api/rewards', async (req, res) => {
       points: reward.points_earned
     }));
     
-    // Calculate statistics
     const grantedRewards = rewards.filter(r => r.result === 'Granted');
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -549,8 +542,6 @@ app.post('/api/rewards', auth, async (req, res) => {
     });
     
     await reward.save();
-    
-    // Update user points
     await User.findByIdAndUpdate(req.user.userId, { $inc: { points: points_earned || 10, total_rewards: 1 } });
     
     res.status(201).json({ success: true, data: reward });
@@ -569,7 +560,6 @@ app.put('/api/rewards/:id/end', auth, async (req, res) => {
     reward.duration_min = Math.ceil((reward.ended_at - reward.started_at) / 60000);
     await reward.save();
     
-    // Release charging port
     if (reward.port_id) {
       await ChargingPort.findByIdAndUpdate(reward.port_id, { status: 'Available' });
     }
