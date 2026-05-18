@@ -338,3 +338,105 @@
     font-size: 0.68rem;
   }
 }
+
+/* Add to your existing CSS */
+
+/* Bin Name Cell */
+.bin-name-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.bin-name {
+  font-weight: 600;
+  color: #1e293b;
+  font-size: 0.85rem;
+}
+
+/* Loading Spinner */
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+  gap: 1rem;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #e2e8f0;
+  border-top-color: #0f172a;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Error Container */
+.error-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+  gap: 1rem;
+  text-align: center;
+}
+
+.error-icon {
+  font-size: 3rem;
+}
+
+.retry-btn {
+  padding: 0.6rem 1.5rem;
+  background: #0f172a;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.retry-btn:hover {
+  background: #1e293b;
+}
+
+/* Refresh Button */
+.refresh-btn {
+  background: transparent;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.4rem 0.7rem;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.refresh-btn:hover {
+  background: #f1f5f9;
+  transform: rotate(15deg);
+}
+
+/* Adjust column widths for new layout */
+.professional-table th:nth-child(1),
+.professional-table td:nth-child(1) { width: 25%; }
+
+.professional-table th:nth-child(2),
+.professional-table td:nth-child(2) { width: 30%; }
+
+.professional-table th:nth-child(3),
+.professional-table td:nth-child(3) { width: 15%; }
+
+.professional-table th:nth-child(4),
+.professional-table td:nth-child(4) { width: 15%; }
+
+.professional-table th:nth-child(5),
+.professional-table td:nth-child(5) { width: 15%; }

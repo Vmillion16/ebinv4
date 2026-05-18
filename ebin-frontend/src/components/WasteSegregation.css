@@ -185,3 +185,323 @@
   padding-top: 10px;
   border-top: 1px solid #f3f4f6;
 }
+
+/* Add to existing WasteSegregation.css */
+
+/* Loading State */
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+  gap: 1rem;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #e2e8f0;
+  border-top-color: #1D9E75;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Refresh Button */
+.ws-refresh-btn {
+  background: transparent;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ws-refresh-btn:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+/* Warning Note */
+.ws-warning-note {
+  font-size: 0.75rem;
+  color: #f59e0b;
+  margin-top: 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+/* Error State */
+.error-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+  gap: 1rem;
+  text-align: center;
+}
+
+.error-icon {
+  font-size: 3rem;
+}
+
+.retry-btn {
+  padding: 0.6rem 1.5rem;
+  background: #1D9E75;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.retry-btn:hover {
+  background: #15803d;
+}
+
+/* Empty State */
+.ws-empty {
+  text-align: center;
+  padding: 3rem !important;
+  color: #94a3b8;
+}
+
+/* Add these styles */
+
+.ws-page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+  gap: 1rem;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #e2e8f0;
+  border-top-color: #1D9E75;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.ws-refresh-btn {
+  background: transparent;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ws-refresh-btn:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.ws-warning-note {
+  font-size: 0.75rem;
+  color: #f59e0b;
+  margin-top: 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+/* Statistics Row */
+.ws-stats-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.ws-stat-box {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 12px 20px;
+  text-align: center;
+  flex: 1;
+  min-width: 90px;
+}
+
+.ws-stat-number {
+  display: block;
+  font-size: 24px;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+.ws-stat-text {
+  font-size: 11px;
+  color: #6b7280;
+  margin-top: 4px;
+  display: block;
+}
+
+.ws-stat-box.ws-stat-green .ws-stat-number {
+  color: #15803d;
+}
+
+.ws-stat-box.ws-stat-orange .ws-stat-number {
+  color: #b45309;
+}
+
+.ws-stat-box.ws-stat-red .ws-stat-number {
+  color: #dc2626;
+}
+
+/* Info Notes */
+.ws-info-note {
+  font-size: 11px;
+  color: #3b82f6;
+  margin-top: 6px;
+  background: #eff6ff;
+  padding: 4px 10px;
+  border-radius: 6px;
+  display: inline-block;
+}
+
+.ws-success-note {
+  font-size: 11px;
+  color: #15803d;
+  margin-top: 6px;
+  background: #dcfce7;
+  padding: 4px 10px;
+  border-radius: 6px;
+  display: inline-block;
+}
+
+/* Empty State */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 30px 20px;
+  text-align: center;
+}
+
+.empty-icon {
+  font-size: 40px;
+  margin-bottom: 8px;
+  opacity: 0.5;
+}
+
+.empty-state p {
+  margin: 0;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.empty-state small {
+  font-size: 11px;
+  color: #9ca3af;
+  margin-top: 4px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .ws-stats-row {
+    gap: 8px;
+  }
+  
+  .ws-stat-box {
+    padding: 8px 12px;
+    min-width: 70px;
+  }
+  
+  .ws-stat-number {
+    font-size: 18px;
+  }
+  
+  .ws-stat-text {
+    font-size: 9px;
+  }
+}
+
+/* Header Buttons */
+.ws-header-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.ws-add-btn {
+  background: #1D9E75;
+  border: none;
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: white;
+}
+
+.ws-add-btn:hover:not(:disabled) {
+  background: #15803d;
+}
+
+.ws-add-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ws-error-note {
+  font-size: 0.75rem;
+  color: #dc2626;
+  margin-top: 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: #fee2e2;
+  padding: 4px 10px;
+  border-radius: 6px;
+  display: inline-block;
+}
+
+.ws-success-note {
+  font-size: 0.75rem;
+  color: #15803d;
+  margin-top: 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: #dcfce7;
+  padding: 4px 10px;
+  border-radius: 6px;
+  display: inline-block;
+}

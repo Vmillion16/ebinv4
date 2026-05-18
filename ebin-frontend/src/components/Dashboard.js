@@ -8,7 +8,7 @@ import Reports from './Reports';
 import Settings from './Settings';
 import CollectionReward from './CollectionReward';
 import Maintenance from './Maintenance';
-import API_URL from '../config';  // ← This is imported as API_URL
+import API_URL from '../config';
 
 const Dashboard = ({ user, onLogout }) => {
   const [activeTab,        setActiveTab]        = useState('overview');
@@ -19,44 +19,72 @@ const Dashboard = ({ user, onLogout }) => {
 
   const token = localStorage.getItem('token');
 
+  // Fetch dashboard data using public endpoint (no auth required)
   const fetchDashboard = async () => {
-  try {
-    const token = localStorage.getItem('token');
-    console.log('Token being sent:', token ? 'Yes (length: ' + token.length + ')' : 'NO TOKEN!');
-    
-    if (!token) {
-      console.error('No token found! Redirecting to login...');
-      window.location.href = '/login';
-      return;
-    }
-
-    const res = await axios.get(`${API_URL}/dashboard`, {
-      headers: { 
-        'Authorization': `Bearer ${token}`  // Make sure format is exactly this
+    try {
+      setDashboardLoading(true);
+      
+      // Use public dashboard endpoint - no authentication needed!
+      const response = await fetch(`${API_URL}/bins/public/dashboard`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Dashboard data fetched successfully:', data);
+        setDashboardData(data);
+      } else {
+        console.error('Failed to fetch dashboard data:', response.status);
+        // Fallback to empty data structure
+        setDashboardData({
+          bins: [],
+          wasteLast7Days: [],
+          totalBins: 0,
+          fullBins: 0,
+          activeAlerts: 0
+        });
       }
-    });
-    setDashboardData(res.data);
-  } catch (err) {
-    console.error('Failed to fetch dashboard:', err);
-    if (err.response?.status === 401) {
-      console.log('Token invalid or expired, redirecting to login');
-      localStorage.removeItem('token');
-      window.location.href = '/login';
+    } catch (err) {
+      console.error('Failed to fetch dashboard:', err);
+      setDashboardData({
+        bins: [],
+        wasteLast7Days: [],
+        totalBins: 0,
+        fullBins: 0,
+        activeAlerts: 0
+      });
+    } finally {
+      setDashboardLoading(false);
     }
-  } finally {
-    setDashboardLoading(false);
-  }
-};
+  };
 
+  // Fetch bins data using public endpoint
   const fetchBins = async () => {
     try {
-      // FIXED: Changed API_BASE to API_URL
-      const res = await axios.get(`${API_URL}/bins`, {
-        headers: { Authorization: `Bearer ${token}` },
+      setBinsLoading(true);
+      
+      // Use public dashboard endpoint to get bin data
+      const response = await fetch(`${API_URL}/bins/public/dashboard`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
       });
-      setBins(res.data);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Bins data fetched successfully:', data.bins);
+        setBins(data.bins || []);
+      } else {
+        console.error('Failed to fetch bins data:', response.status);
+        setBins([]);
+      }
     } catch (err) {
       console.error('Failed to fetch bins:', err);
+      setBins([]);
     } finally {
       setBinsLoading(false);
     }
@@ -64,7 +92,7 @@ const Dashboard = ({ user, onLogout }) => {
 
   const handleResetBin = async (binId) => {
     try {
-      // FIXED: Changed API_BASE to API_URL
+      // This still needs authentication since it's an admin action
       await axios.put(
         `${API_URL}/bins/${binId}/reset`,
         {},
@@ -97,7 +125,7 @@ const Dashboard = ({ user, onLogout }) => {
       <div className="dashboard">
         <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} user={user} onLogout={onLogout} />
         <div className="main-content" style={{ padding: '20px' }}>
-          <h2>Loading...</h2>
+          <h2>Loading dashboard...</h2>
         </div>
       </div>
     );
@@ -109,7 +137,7 @@ const Dashboard = ({ user, onLogout }) => {
         return <DashboardOverview data={dashboardData} />;
 
       case 'bins':
-        return <BinMonitoring bins={bins} isLoading={binsLoading} />;
+        return <BinMonitoring bins={bins} isLoading={binsLoading} onResetBin={handleResetBin} />;
 
       case 'segregation':
         return <WasteSegregation />;
@@ -144,9 +172,9 @@ const Dashboard = ({ user, onLogout }) => {
             </span>
           </div>
           <div className="user-info">
-            <span className="user-name">{user?.fullName}</span>
-            <span className={`role-badge role-${user?.role?.toLowerCase().replace(/\s+/g, '-')}`}>
-              {user?.role}
+            <span className="user-name">{user?.fullName || user?.name || 'User'}</span>
+            <span className={`role-badge role-${user?.role?.toLowerCase().replace(/\s+/g, '-') || 'user'}`}>
+              {user?.role || 'User'}
             </span>
           </div>
         </header>

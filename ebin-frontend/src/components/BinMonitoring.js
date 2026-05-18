@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
 import './BinMonitoring.css';
 import API_URL from '../config';
 
-// Helper Functions (keep your existing ones)
+// Helper Functions
 const getTypeShortName = (type) => {
   const t = type?.toLowerCase() || '';
-  if (t.includes('organic') || t.includes('bio')) return 'Bio';
+  if (t.includes('organic') || t.includes('bio') || t.includes('biodegradable')) return 'Bio';
   if (t.includes('recyclable') || t.includes('recycle') || t.includes('plastic')) return 'Recycle';
   return 'Non-Bio';
 };
@@ -29,17 +28,24 @@ const getStatusClass = (status) => {
 
 // Bin Row Component
 const BinRow = ({ bin }) => {
-  const fillLevel = bin.fill_level ?? 0;
-  const weight    = bin.weight_kg ?? 0;  // Note: your backend uses weight_kg
+  const fillLevel = bin.fill_level ?? bin.fillLevel ?? 0;
+  const weight    = bin.weight_kg ?? bin.weightKg ?? 0;
+  const binName   = bin.bin_name ?? bin.name ?? 'Unknown Bin';
+  const binType   = bin.bin_type ?? bin.type ?? 'General';
+  const status    = bin.status ?? 'ACTIVE';
+  
   const { label, cls } = getPriorityLabel(fillLevel);
   const fillPct   = Math.min(Math.round(fillLevel), 100);
 
   return (
     <tr className={`pro-row priority-${cls}`}>
       <td>
-        <span className={`type-badge pro-type-${getTypeShortName(bin.bin_type).toLowerCase().replace('-', '')}`}>
-          {getTypeShortName(bin.bin_type)}
-        </span>
+        <div className="bin-name-cell">
+          <span className="bin-name">{binName}</span>
+          <span className={`type-badge pro-type-${getTypeShortName(binType).toLowerCase().replace('-', '')}`}>
+            {getTypeShortName(binType)}
+          </span>
+        </div>
       </td>
       <td>
         <div className="fill-cell">
@@ -54,8 +60,8 @@ const BinRow = ({ bin }) => {
         </div>
       </td>
       <td>
-        <span className={`pro-status-badge ${getStatusClass(bin.status)}`}>
-          {bin.status ?? 'UNKNOWN'}
+        <span className={`pro-status-badge ${getStatusClass(status)}`}>
+          {status ?? 'ACTIVE'}
         </span>
       </td>
       <td><span className="weight-badge">{weight.toFixed(1)} kg</span></td>
@@ -64,7 +70,7 @@ const BinRow = ({ bin }) => {
   );
 };
 
-// Main Component - Now with API connection
+// Main Component - Using public endpoint (no auth required)
 const BinMonitoring = () => {
   const [bins, setBins] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -72,50 +78,58 @@ const BinMonitoring = () => {
   const [filterType, setFilterType] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
 
-  // Fetch bins from backend
-  useEffect(() => {
-    const fetchBins = async () => {
-      try {
-        setLoading(true);
-        const token = localStorage.getItem('token');
-        
-        if (!token) {
-          setError('Please login to view bins');
-          setLoading(false);
-          return;
-        }
-
-        const response = await axios.get(`${API_URL}/bins`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-
-        console.log('Fetched bins:', response.data);
-        setBins(response.data);
-        setError(null);
-      } catch (err) {
-        console.error('Error fetching bins:', err);
-        setError(err.response?.data?.error || 'Failed to load bins');
-      } finally {
-        setLoading(false);
+  // Fetch bins from public endpoint
+  const fetchBins = async () => {
+    try {
+      setLoading(true);
+      
+      // Use public dashboard endpoint (no authentication needed)
+      const response = await fetch(`${API_URL}/bins/public/dashboard`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch bins: ${response.status}`);
       }
-    };
+      
+      const data = await response.json();
+      console.log('Fetched bins from public endpoint:', data);
+      
+      // Extract bins from response (the endpoint returns { success, bins, wasteLast7Days, summary })
+      const binsData = data.bins || [];
+      setBins(binsData);
+      setError(null);
+    } catch (err) {
+      console.error('Error fetching bins:', err);
+      setError(err.message || 'Failed to load bins');
+      // Set empty array to avoid breaking the UI
+      setBins([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchBins();
     
-    // Optional: Refresh data every 30 seconds
+    // Refresh data every 30 seconds
     const interval = setInterval(fetchBins, 30000);
     return () => clearInterval(interval);
   }, []);
 
   const filteredBins = bins.filter((bin) => {
-    const typeMatch = filterType === 'all' || getTypeShortName(bin.bin_type) === filterType;
-    const statusMatch = filterStatus === 'all' || bin.status?.toUpperCase() === filterStatus;
+    const binType = bin.bin_type ?? bin.type ?? 'General';
+    const binStatus = bin.status ?? 'ACTIVE';
+    
+    const typeMatch = filterType === 'all' || getTypeShortName(binType) === filterType;
+    const statusMatch = filterStatus === 'all' || binStatus.toUpperCase() === filterStatus;
     return typeMatch && statusMatch;
   });
 
-  if (loading) {
+  if (loading && bins.length === 0) {
     return (
       <div className="bin-monitoring-professional">
         <div className="loading-container">
@@ -126,13 +140,13 @@ const BinMonitoring = () => {
     );
   }
 
-  if (error) {
+  if (error && bins.length === 0) {
     return (
       <div className="bin-monitoring-professional">
         <div className="error-container">
           <div className="error-icon">⚠️</div>
           <p>{error}</p>
-          <button onClick={() => window.location.reload()} className="retry-btn">
+          <button onClick={fetchBins} className="retry-btn">
             Retry
           </button>
         </div>
@@ -148,8 +162,8 @@ const BinMonitoring = () => {
           <label>Bin Type</label>
           <select value={filterType} onChange={(e) => setFilterType(e.target.value)}>
             <option value="all">All Types</option>
-            <option value="Recycle">Recycle</option>
             <option value="Bio">Bio</option>
+            <option value="Recycle">Recycle</option>
             <option value="Non-Bio">Non-Bio</option>
           </select>
         </div>
@@ -170,7 +184,7 @@ const BinMonitoring = () => {
           <h2>{filteredBins.length} Bins • {bins.length} Total</h2>
           <button 
             className="refresh-btn" 
-            onClick={() => window.location.reload()}
+            onClick={fetchBins}
             title="Refresh data"
           >
             🔄
@@ -180,8 +194,8 @@ const BinMonitoring = () => {
           <table className="professional-table">
             <thead>
               <tr>
-                <th>Type</th>
-                <th>Fill</th>
+                <th>Bin</th>
+                <th>Fill Level</th>
                 <th>Status</th>
                 <th>Weight</th>
                 <th>Priority</th>
@@ -210,7 +224,7 @@ const BinMonitoring = () => {
                 </tr>
               ) : (
                 filteredBins.map((bin) => (
-                  <BinRow key={bin._id || bin.bin_id} bin={bin} />
+                  <BinRow key={bin._id || bin.id || Math.random()} bin={bin} />
                 ))
               )}
             </tbody>
