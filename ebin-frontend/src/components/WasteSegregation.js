@@ -138,10 +138,9 @@ const WasteSegregation = () => {
       <div className="ws-page-header">
         <div>
           <h2 className="ws-page-title">Waste Segregation</h2>
-          <p className="ws-page-sub">Segregation event log — DFD Process 2 requirement</p>
           {events.length === 0 && !error && (
             <p className="ws-info-note">
-              📋 No waste events found in database.
+              No waste events found in database.
             </p>
           )}
           {error && (
