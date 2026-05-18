@@ -1,29 +1,61 @@
 const mongoose = require('mongoose');
 
 const rewardSessionSchema = new mongoose.Schema({
-  userId: {
+  event_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'WasteEvent',
+    required: true
+  },
+  port_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'ChargingPort',
+    required: true
+  },
+  user_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true
   },
-  wasteEventId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'WasteEvent'
+  started_at: {
+    type: Date,
+    default: Date.now
   },
-  points: {
+  duration_min: {
     type: Number,
-    required: true
+    default: 20
   },
-  rewardType: {
+  result: {
     type: String,
-    enum: ['points_earned', 'points_redeemed', 'bonus'],
-    required: true
+    enum: ['Granted', 'Declined', 'Pending'],
+    default: 'Pending'
   },
-  description: String,
-  timestamp: {
+  points_earned: {
+    type: Number,
+    default: 0
+  },
+  reward_type: {
+    type: String,
+    enum: ['disposal_reward', 'charging_reward', 'bonus', 'points_redeemed'],
+    default: 'disposal_reward'
+  },
+  description: {
+    type: String,
+    default: ''
+  },
+  ended_at: {
+    type: Date
+  },
+  created_at: {
     type: Date,
     default: Date.now
   }
 });
+
+// Indexes for faster queries
+rewardSessionSchema.index({ user_id: 1, started_at: -1 });
+rewardSessionSchema.index({ event_id: 1 });
+rewardSessionSchema.index({ port_id: 1 });
+rewardSessionSchema.index({ result: 1 });
+rewardSessionSchema.index({ started_at: -1 });
 
 module.exports = mongoose.model('RewardSession', rewardSessionSchema);
