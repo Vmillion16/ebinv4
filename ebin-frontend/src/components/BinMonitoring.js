@@ -1,20 +1,23 @@
-import React, { useState, useEffect } from 'react';
+// BinMonitoring.js
+import React, { useMemo, useState } from 'react';
 import './BinMonitoring.css';
-import API_URL from '../config';
+import { useEbin } from '../EbinContext';
 
-// Helper Functions
-const getTypeShortName = (type) => {
-  const t = type?.toLowerCase() || '';
-  if (t.includes('organic') || t.includes('bio') || t.includes('biodegradable')) return 'Bio';
-  if (t.includes('recyclable') || t.includes('recycle') || t.includes('plastic')) return 'Recycle';
-  return 'Non-Bio';
+const BASE_URL   = "https://ebinv4-1.onrender.com";
+const SENSOR_URL = `${BASE_URL}/api/esp32/sensors/update`;
+
+const getFullTypeName = (type) => {
+  if (type === 'Biodegradable')     return 'Biodegradable';
+  if (type === 'Non-Biodegradable') return 'Non-Biodegradable';
+  if (type === 'Recyclable')        return 'Recyclable';
+  return 'General Waste';
 };
 
 const getPriorityLabel = (fillLevel) => {
   if (fillLevel >= 90) return { label: 'CRITICAL', cls: 'critical' };
-  if (fillLevel >= 76) return { label: 'HIGH',     cls: 'high'     };
-  if (fillLevel >= 51) return { label: 'MEDIUM',   cls: 'medium'   };
-  return                      { label: 'LOW',      cls: 'low'      };
+  if (fillLevel >= 76) return { label: 'HIGH',     cls: 'high' };
+  if (fillLevel >= 51) return { label: 'MEDIUM',   cls: 'medium' };
+  return                       { label: 'LOW',      cls: 'low' };
 };
 
 const getStatusClass = (status) => {
@@ -26,210 +29,294 @@ const getStatusClass = (status) => {
   }
 };
 
-// Bin Row Component
-const BinRow = ({ bin }) => {
-  const fillLevel = bin.fill_level ?? bin.fillLevel ?? 0;
-  const weight    = bin.weight_kg ?? bin.weightKg ?? 0;
-  const binName   = bin.bin_name ?? bin.name ?? 'Unknown Bin';
-  const binType   = bin.bin_type ?? bin.type ?? 'General';
-  const status    = bin.status ?? 'ACTIVE';
-  
-  const { label, cls } = getPriorityLabel(fillLevel);
-  const fillPct   = Math.min(Math.round(fillLevel), 100);
+const getTypeColor = (type) => {
+  if (type === 'Biodegradable')     return '#4CAF50';
+  if (type === 'Recyclable')        return '#2196F3';
+  if (type === 'Non-Biodegradable') return '#FF9800';
+  return '#9E9E9E';
+};
+
+const getBinTypeKey = (type) => {
+  if (type === 'Recyclable')        return 'recyclable';
+  if (type === 'Biodegradable')     return 'biodegradable';
+  if (type === 'Non-Biodegradable') return 'non_biodegradable';
+  return 'non_biodegradable';
+};
+
+// ── Empty Bin confirmation modal ──────────────────────────────
+const EmptyConfirmModal = ({ bin, onConfirm, onCancel, loading }) => (
+  <div className="modal-overlay">
+    <div className="modal-box">
+      <div className="modal-icon">🗑️</div>
+      <h3 className="modal-title">Mark Bin as Emptied?</h3>
+      <p className="modal-desc">
+        This will reset <strong>{bin.bin_name}</strong> ({getFullTypeName(bin.bin_type)}) fill level back to <strong>0%</strong> and mark it as <strong>ACTIVE</strong>.
+      </p>
+      <p className="modal-warning">Only do this after the bin has been physically emptied.</p>
+      <div className="modal-actions">
+        <button className="modal-btn modal-btn-cancel" onClick={onCancel} disabled={loading}>
+          Cancel
+        </button>
+        <button className="modal-btn modal-btn-confirm" onClick={onConfirm} disabled={loading}>
+          {loading ? 'Resetting...' : '✅ Yes, Bin is Empty'}
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
+// ── Individual bin row ────────────────────────────────────────
+const BinRow = ({ bin, onEmptyClick }) => {
+  const { label, cls } = getPriorityLabel(bin.fillLevel);
+  const fillPct        = Math.min(Math.round(bin.fillLevel), 100);
+  const typeColor      = getTypeColor(bin.bin_type);
+  const isFull         = fillPct >= 90;
 
   return (
-    <tr className={`pro-row priority-${cls}`}>
+    <tr className={`bin-row priority-${cls}`}>
       <td>
-        <div className="bin-name-cell">
-          <span className="bin-name">{binName}</span>
-          <span className={`type-badge pro-type-${getTypeShortName(binType).toLowerCase().replace('-', '')}`}>
-            {getTypeShortName(binType)}
-          </span>
+        <div className="bin-info">
+          <div className="bin-name-wrapper">
+            <span className="bin-type-indicator" style={{ backgroundColor: typeColor }} />
+            <div>
+              <div className="bin-name">{bin.bin_name}</div>
+              <div className="bin-type-label" style={{ color: typeColor }}>
+                {getFullTypeName(bin.bin_type)}
+              </div>
+            </div>
+          </div>
         </div>
       </td>
+
       <td>
-        <div className="fill-cell">
-          <div className="fill-bar-track">
+        <div className="fill-level-container">
+          <div className="fill-bar">
             <div
-              className="fill-bar-fill"
+              className={`fill-bar-fill ${
+                fillPct >= 90 ? 'critical' :
+                fillPct >= 76 ? 'high' :
+                fillPct >= 51 ? 'medium' : 'low'
+              }`}
               style={{ width: `${fillPct}%` }}
-              data-level={fillPct >= 90 ? 'critical' : fillPct >= 76 ? 'high' : fillPct >= 51 ? 'medium' : 'low'}
             />
           </div>
-          <span className="fill-pct">{fillPct}%</span>
+          <div className="fill-percentage">{fillPct}%</div>
         </div>
       </td>
+
       <td>
-        <span className={`pro-status-badge ${getStatusClass(status)}`}>
-          {status ?? 'ACTIVE'}
+        <span className={`status-badge ${getStatusClass(bin.status)}`}>
+          {bin.status || 'ACTIVE'}
         </span>
       </td>
-      <td><span className="weight-badge">{weight.toFixed(1)} kg</span></td>
-      <td><span className={`priority-badge pro-priority-${cls}`}>{label}</span></td>
+
+      <td>
+        <span className="weight-value">{(bin.weight_kg ?? 0).toFixed(1)} kg</span>
+      </td>
+
+      <td>
+        <span className={`priority-badge priority-${cls}`}>{label}</span>
+      </td>
+
+      <td>
+        <button
+          className={`empty-bin-btn ${isFull ? 'empty-bin-btn-urgent' : ''}`}
+          onClick={() => onEmptyClick(bin)}
+          title="Mark this bin as emptied — resets fill level to 0%"
+        >
+          {isFull ? '🚨 Empty Now' : '🗑️ Mark Empty'}
+        </button>
+      </td>
     </tr>
   );
 };
 
-// Main Component - Using public endpoint (no auth required)
-const BinMonitoring = () => {
-  const [bins, setBins] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [filterType, setFilterType] = useState('all');
-  const [filterStatus, setFilterStatus] = useState('all');
+// ── Stats cards ───────────────────────────────────────────────
+const StatsCard = ({ bins, stats }) => (
+  <div className="stats-grid">
+    <div className="stat-card">
+      <div className="stat-value">{stats.totalBins}</div>
+      <div className="stat-label">Total Bins</div>
+      <div className="stat-breakdown">
+        <span className="stat-bio">🌱 {bins.filter(b => b.bin_type === 'Biodegradable').length} Biodegradable</span>
+        <span className="stat-recycle">♻️ {bins.filter(b => b.bin_type === 'Recyclable').length} Recyclable</span>
+        <span className="stat-nonbio">🗑️ {bins.filter(b => b.bin_type === 'Non-Biodegradable').length} Non-Biodegradable</span>
+      </div>
+    </div>
+    <div className="stat-card">
+      <div className="stat-value">{stats.avgFillLevel.toFixed(0)}%</div>
+      <div className="stat-label">Average Fill Level</div>
+      <div className="stat-trend">
+        {stats.avgFillLevel > 70 ? '⚠️ Needs attention' : '✅ Operating normally'}
+      </div>
+    </div>
+    <div className="stat-card">
+      <div className="stat-value">{stats.totalBinWeight.toFixed(1)} kg</div>
+      <div className="stat-label">Total Waste Weight</div>
+      <div className="stat-trend">Across all bins</div>
+    </div>
+    <div className="stat-card">
+      <div className="stat-value">{stats.totalEvents}</div>
+      <div className="stat-label">Total Detections</div>
+      <div className="stat-trend">♻️ {stats.recyclableEvents} · 🌱 {stats.biodegradableEvents} · 🗑️ {stats.nonBioEvents}</div>
+    </div>
+  </div>
+);
 
-  // Fetch bins from public endpoint
-  const fetchBins = async () => {
+// ── Main component ────────────────────────────────────────────
+const BinMonitoring = () => {
+  const {
+    bins, stats, loadingBins, errorBins,
+    fetchBins,            // ← only refresh bins after emptying
+    refreshAll,           // ← used for the manual refresh button
+    clearEventsForBin,
+    resetClearedTypes,
+  } = useEbin();
+
+  const [confirmBin,  setConfirmBin]  = useState(null);
+  const [resetting,   setResetting]   = useState(false);
+  const [resetResult, setResetResult] = useState(null);
+
+  const sortedBins = useMemo(() => [...bins].sort((a, b) => {
+    const order = { Biodegradable: 1, Recyclable: 2, 'Non-Biodegradable': 3 };
+    return (order[a.bin_type] || 99) - (order[b.bin_type] || 99);
+  }), [bins]);
+
+  // ── Called when user confirms emptying ──
+  const handleEmptyConfirm = async () => {
+    if (!confirmBin) return;
+    setResetting(true);
+
     try {
-      setLoading(true);
-      
-      // Use public dashboard endpoint (no authentication needed)
-      const response = await fetch(`${API_URL}/bins/public/dashboard`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+      const res = await fetch(SENSOR_URL, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bin_type:  getBinTypeKey(confirmBin.bin_type),
+          bin_level: 0,
+          weight_kg: 0,
+          status:    'ACTIVE',
+        }),
       });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch bins: ${response.status}`);
+
+      if (res.ok) {
+        setResetResult({
+          success: true,
+          message: `✅ ${confirmBin.bin_name} has been marked as emptied and reset to 0%.`,
+        });
+        // 1. Hide events for this bin type in WasteSegregation
+        clearEventsForBin(confirmBin.bin_type);
+        // 2. Only re-fetch bins (NOT events) so cleared events don't come back
+        await fetchBins();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setResetResult({
+          success: false,
+          message: `❌ Failed to reset bin: ${err.message || res.statusText}`,
+        });
       }
-      
-      const data = await response.json();
-      console.log('Fetched bins from public endpoint:', data);
-      
-      // Extract bins from response (the endpoint returns { success, bins, wasteLast7Days, summary })
-      const binsData = data.bins || [];
-      setBins(binsData);
-      setError(null);
-    } catch (err) {
-      console.error('Error fetching bins:', err);
-      setError(err.message || 'Failed to load bins');
-      // Set empty array to avoid breaking the UI
-      setBins([]);
+    } catch (e) {
+      setResetResult({ success: false, message: `❌ Network error: ${e.message}` });
     } finally {
-      setLoading(false);
+      setResetting(false);
+      setConfirmBin(null);
     }
   };
 
-  useEffect(() => {
-    fetchBins();
-    
-    // Refresh data every 30 seconds
-    const interval = setInterval(fetchBins, 30000);
-    return () => clearInterval(interval);
-  }, []);
+  // ── Manual refresh: restore events + reload everything ──
+  const handleManualRefresh = () => {
+    resetClearedTypes();  // unblock any cleared types
+    refreshAll();         // re-fetch bins + events fresh
+  };
 
-  const filteredBins = bins.filter((bin) => {
-    const binType = bin.bin_type ?? bin.type ?? 'General';
-    const binStatus = bin.status ?? 'ACTIVE';
-    
-    const typeMatch = filterType === 'all' || getTypeShortName(binType) === filterType;
-    const statusMatch = filterStatus === 'all' || binStatus.toUpperCase() === filterStatus;
-    return typeMatch && statusMatch;
-  });
-
-  if (loading && bins.length === 0) {
+  // ── Loading / error states ──
+  if (loadingBins && bins.length === 0) {
     return (
-      <div className="bin-monitoring-professional">
-        <div className="loading-container">
+      <div className="bin-monitoring">
+        <div className="loading-state">
           <div className="spinner"></div>
-          <p>Loading bins...</p>
+          <p>Loading bin data...</p>
         </div>
       </div>
     );
   }
 
-  if (error && bins.length === 0) {
+  if (errorBins && bins.length === 0) {
     return (
-      <div className="bin-monitoring-professional">
-        <div className="error-container">
+      <div className="bin-monitoring">
+        <div className="error-state">
           <div className="error-icon">⚠️</div>
-          <p>{error}</p>
-          <button onClick={fetchBins} className="retry-btn">
-            Retry
-          </button>
+          <p>{errorBins}</p>
+          <button onClick={handleManualRefresh} className="retry-button">Retry</button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="bin-monitoring-professional">
-      {/* Filters */}
-      <div className="filters-section">
-        <div className="filter-group">
-          <label>Bin Type</label>
-          <select value={filterType} onChange={(e) => setFilterType(e.target.value)}>
-            <option value="all">All Types</option>
-            <option value="Bio">Bio</option>
-            <option value="Recycle">Recycle</option>
-            <option value="Non-Bio">Non-Bio</option>
-          </select>
+    <div className="bin-monitoring">
+
+      {confirmBin && (
+        <EmptyConfirmModal
+          bin={confirmBin}
+          onConfirm={handleEmptyConfirm}
+          onCancel={() => setConfirmBin(null)}
+          loading={resetting}
+        />
+      )}
+
+      {resetResult && (
+        <div className={`reset-toast ${resetResult.success ? 'toast-success' : 'toast-error'}`}>
+          {resetResult.message}
+          <button className="toast-close" onClick={() => setResetResult(null)}>✕</button>
         </div>
-        <div className="filter-group">
-          <label>Status</label>
-          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
-            <option value="all">All Status</option>
-            <option value="ACTIVE">Active</option>
-            <option value="FULL">Full</option>
-            <option value="MAINTENANCE">Maintenance</option>
-          </select>
-        </div>
+      )}
+
+      <div className="monitoring-header">
+        <h1>🗑️ Bin Monitoring</h1>
+        <p>Real-time waste bin status and fill levels</p>
       </div>
 
-      {/* Table */}
-      <div className="table-container">
+      <StatsCard bins={bins} stats={stats} />
+
+      <div className="table-wrapper">
         <div className="table-header">
-          <h2>{filteredBins.length} Bins • {bins.length} Total</h2>
-          <button 
-            className="refresh-btn" 
-            onClick={fetchBins}
-            title="Refresh data"
-          >
-            🔄
-          </button>
+          <h3>All Bins</h3>
+          <div className="table-stats">
+            <span>{bins.length} total bins</span>
+            {/* Manual refresh also restores cleared event history */}
+            <button className="refresh-button" onClick={handleManualRefresh} title="Refresh">🔄</button>
+          </div>
         </div>
+
         <div className="table-responsive">
-          <table className="professional-table">
+          <table className="bins-table">
             <thead>
               <tr>
-                <th>Bin</th>
+                <th>Bin Information</th>
                 <th>Fill Level</th>
                 <th>Status</th>
                 <th>Weight</th>
                 <th>Priority</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
-              {bins.length === 0 ? (
-                <tr>
-                  <td colSpan="5" className="no-data">
-                    <div className="empty-state">
-                      <div className="empty-icon">📦</div>
-                      <p>No bin data available</p>
-                      <small>Waiting for sensor data...</small>
-                    </div>
-                  </td>
-                </tr>
-              ) : filteredBins.length === 0 ? (
-                <tr>
-                  <td colSpan="5" className="no-data">
-                    <div className="empty-state">
-                      <div className="empty-icon">🔍</div>
-                      <p>No bins match your filters</p>
-                      <small>Try adjusting the filters above</small>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                filteredBins.map((bin) => (
-                  <BinRow key={bin._id || bin.id || Math.random()} bin={bin} />
-                ))
-              )}
+              {sortedBins.map(bin => (
+                <BinRow
+                  key={bin._id}
+                  bin={bin}
+                  onEmptyClick={(b) => setConfirmBin(b)}
+                />
+              ))}
             </tbody>
           </table>
         </div>
+
+        <p className="table-note">
+          💡 Press <strong>"Mark Empty"</strong> after physically collecting waste to reset the fill level to 0%.
+          Bins at 90%+ are highlighted as 🚨 urgent.
+        </p>
       </div>
     </div>
   );

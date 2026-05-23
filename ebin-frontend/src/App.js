@@ -5,6 +5,7 @@ import Register from './components/Register';
 import ForgotPassword from './components/ForgotPassword';
 import UserManagement from './components/Usermanagement';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { EbinProvider } from './EbinContext';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -38,79 +39,78 @@ function App() {
   };
 
   return (
-    <Router>
-      <div className="App">
-        <Routes>
-          <Route
-            path="/login"
-            element={
-              !isAuthenticated ? (
-                <Login onLogin={handleLogin} />
-              ) : (
-                <Navigate to="/dashboard" />
-              )
-            }
-          />
+    <EbinProvider>
+      <Router>
+        <div className="App">
+          <Routes>
+            <Route
+              path="/login"
+              element={
+                !isAuthenticated ? (
+                  <Login onLogin={handleLogin} />
+                ) : (
+                  <Navigate to="/dashboard" />
+                )
+              }
+            />
 
-          <Route
-            path="/register"
-            element={
-              !isAuthenticated ? (
-                <Register />
-              ) : (
-                <Navigate to="/dashboard" />
-              )
-            }
-          />
+            <Route
+              path="/register"
+              element={
+                !isAuthenticated ? (
+                  <Register />
+                ) : (
+                  <Navigate to="/dashboard" />
+                )
+              }
+            />
 
-          <Route
-            path="/forgot-password"
-            element={
-              !isAuthenticated ? (
-                <ForgotPassword />
-              ) : (
-                <Navigate to="/dashboard" />
-              )
-            }
-          />
+            <Route
+              path="/forgot-password"
+              element={
+                !isAuthenticated ? (
+                  <ForgotPassword />
+                ) : (
+                  <Navigate to="/dashboard" />
+                )
+              }
+            />
 
-          <Route
-            path="/dashboard/*"
-            element={
-              isAuthenticated ? (
-                <Dashboard user={user} onLogout={handleLogout} />
-              ) : (
-                <Navigate to="/login" />
-              )
-            }
-          />
+            <Route
+              path="/dashboard/*"
+              element={
+                isAuthenticated ? (
+                  <Dashboard user={user} onLogout={handleLogout} />
+                ) : (
+                  <Navigate to="/login" />
+                )
+              }
+            />
 
-          <Route
-            path="/usermanagement"
-            element={
-              isAuthenticated ? (
-                <UserManagement />
-              ) : (
-                <Navigate to="/login" />
-              )
-            }
-          />
+            <Route
+              path="/usermanagement"
+              element={
+                isAuthenticated ? (
+                  <UserManagement />
+                ) : (
+                  <Navigate to="/login" />
+                )
+              }
+            />
 
-          {/* ✅ REMOVED: /collection-reward and /maintenance orphan routes
-              These are now handled inside Dashboard via activeTab switch */}
+            <Route
+              path="/"
+              element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} />}
+            />
 
-          <Route
-            path="/"
-            element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} />}
-          />
-
-          <Route
-            path="*"
-            element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} />}
-          />
-        </Routes>
-      </div>
-    </Router>
+            <Route
+              path="*"
+              element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} />}
+            />
+          </Routes>
+        </div>
+      </Router>
+    </EbinProvider>
   );
 }
 

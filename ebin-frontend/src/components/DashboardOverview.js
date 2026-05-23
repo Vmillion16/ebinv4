@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useMemo } from 'react';
+// DashboardOverview.js — uses shared EbinContext
+import React, { useMemo } from 'react';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis,
   CartesianGrid, Tooltip,
 } from 'recharts';
 import './DashboardOverview.css';
-import API_URL from '../config';
+import { useEbin } from '../EbinContext';
 
-// ─── Constants ────────────────────────────────────────────────────────────────
 const COLORS = {
   full:     '#E24B4A',
   nearFull: '#F59E0B',
@@ -14,7 +14,7 @@ const COLORS = {
   maint:    '#6b7280',
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// Derives status label from fill level number
 const getBinStatus = (fillLevel) => {
   if (fillLevel >= 90) return 'Full';
   if (fillLevel >= 75) return 'Near Full';
@@ -34,6 +34,14 @@ const getFillBarColor = (fill) => {
   return COLORS.active;
 };
 
+// Fill level label — CRITICAL / HIGH / MEDIUM / LOW
+const getFillLabel = (fill) => {
+  if (fill >= 90) return { text: 'CRITICAL', color: COLORS.full };
+  if (fill >= 75) return { text: 'HIGH',     color: COLORS.nearFull };
+  if (fill >= 51) return { text: 'MEDIUM',   color: '#3b82f6' };
+  return                  { text: 'LOW',      color: COLORS.active };
+};
+
 const CustomAreaTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
@@ -44,101 +52,28 @@ const CustomAreaTooltip = ({ active, payload, label }) => {
   );
 };
 
-// ─── Component ────────────────────────────────────────────────────────────────
 const DashboardOverview = () => {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [lastSync, setLastSync] = useState(null);
+  // ✅ removed errorBins — was unused
+  const { bins, wasteEvents, stats, loadingBins, refreshAll, lastSync } = useEbin();
 
-  const fetchDashboardData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      // Fetch from your Ebin collection via public endpoint
-      const response = await fetch(`${API_URL}/bins/public/dashboard`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-      
-      if (response.ok) {
-        const result = await response.json();
-        console.log('Real database data:', result);
-        
-        // Transform database fields to match component expectations
-        const transformedBins = (result.bins || []).map(bin => ({
-          _id: bin._id,
-          bin_name: bin.bin_name || bin.binname || 'Unknown Bin',
-          bin_type: bin.bin_type || 'General',
-          fillLevel: bin.fill_level || bin.fillLevel || 0,
-          status: bin.status || getBinStatus(bin.fill_level || 0),
-          location: bin.location,
-          weight_kg: bin.weight_kg || 0
-        }));
-        
-        setLastSync(new Date().toLocaleTimeString());
-        setData({
-          bins: transformedBins,
-          wasteLast7Days: result.wasteLast7Days || [
-            { day: 'Mon', kg: 0 }, { day: 'Tue', kg: 0 }, { day: 'Wed', kg: 0 },
-            { day: 'Thu', kg: 0 }, { day: 'Fri', kg: 0 }, { day: 'Sat', kg: 0 }, 
-            { day: 'Sun', kg: 0 }
-          ]
-        });
-        return;
-      }
-      
-      // Fallback to mock data if endpoint fails
-      console.log('Using mock data - endpoint returned:', response.status);
-      setData({
-        bins: [
-          { _id: '1', bin_name: 'Ebin Bin A', bin_type: 'Biodegradable', fillLevel: 72, status: 'Active', weight_kg: 18.5 },
-        ],
-        wasteLast7Days: [
-          { day: 'Mon', kg: 0 }, { day: 'Tue', kg: 0 }, { day: 'Wed', kg: 0 },
-          { day: 'Thu', kg: 0 }, { day: 'Fri', kg: 0 }, { day: 'Sat', kg: 0 }, 
-          { day: 'Sun', kg: 0 }
-        ]
-      });
-      setLastSync(new Date().toLocaleTimeString());
-      
-    } catch (err) {
-      console.error('Error fetching dashboard data:', err);
-      setError(err.message);
-      setData({
-        bins: [
-          { _id: '1', bin_name: 'Ebin Bin A', bin_type: 'Biodegradable', fillLevel: 72, status: 'Active' },
-        ],
-        wasteLast7Days: [
-          { day: 'Mon', kg: 0 }, { day: 'Tue', kg: 0 }, { day: 'Wed', kg: 0 },
-          { day: 'Thu', kg: 0 }, { day: 'Fri', kg: 0 }, { day: 'Sat', kg: 0 }, 
-          { day: 'Sun', kg: 0 }
-        ]
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Build last-7-days waste trend from real waste events
+  const trend = useMemo(() => {
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const map = { Sun: 0, Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0 };
 
-  useEffect(() => {
-    fetchDashboardData();
-    const interval = setInterval(fetchDashboardData, 60000);
-    return () => clearInterval(interval);
-  }, []);
+    wasteEvents.forEach(e => {
+      const d = new Date(e.time);
+      const dayLabel = days[d.getDay()];
+      map[dayLabel] = parseFloat((map[dayLabel] + e.weight_kg).toFixed(2));
+    });
 
-  // ── Priority bins (fill ≥ 75) ──────────────────────────────────────────────
-  const priorityBins = useMemo(() => {
-    if (!data?.bins) return [];
-    return data.bins
-      .filter((b) => (b.fillLevel ?? 0) >= 75)
-      .sort((a, b) => (b.fillLevel ?? 0) - (a.fillLevel ?? 0))
-      .slice(0, 5);
-  }, [data?.bins]);
+    return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => ({
+      day,
+      kg: map[day],
+    }));
+  }, [wasteEvents]);
 
-  if (loading && !data) {
+  if (loadingBins && bins.length === 0) {
     return (
       <div className="do-container">
         <div className="do-card do-card-full">
@@ -153,18 +88,46 @@ const DashboardOverview = () => {
     );
   }
 
-  const bins = data?.bins ?? [];
-  const trend = data?.wasteLast7Days ?? [];
-
   return (
     <div className="do-container">
-      
+
       {lastSync && (
         <div className="do-sync-info">
           <span className="do-sync-label">Last sync:</span>
           <span className="do-sync-time">{lastSync}</span>
+          <button
+            onClick={refreshAll}
+            style={{ marginLeft: 12, fontSize: 12, cursor: 'pointer', background: 'none', border: 'none' }}
+            title="Refresh all data"
+          >
+            🔄
+          </button>
         </div>
       )}
+
+      {/* ── Summary cards ── */}
+      <div className="do-summary-row">
+        <div className="do-summary-card">
+          <span className="do-summary-number">{stats.totalBins}</span>
+          <span className="do-summary-label">Total Bins</span>
+        </div>
+        <div className="do-summary-card" style={{ borderColor: COLORS.full }}>
+          <span className="do-summary-number" style={{ color: COLORS.full }}>{stats.fullBins}</span>
+          <span className="do-summary-label">Full Bins</span>
+        </div>
+        <div className="do-summary-card" style={{ borderColor: COLORS.nearFull }}>
+          <span className="do-summary-number" style={{ color: COLORS.nearFull }}>{stats.nearFullBins}</span>
+          <span className="do-summary-label">Near Full</span>
+        </div>
+        <div className="do-summary-card">
+          <span className="do-summary-number">{stats.totalEvents}</span>
+          <span className="do-summary-label">Total Detections</span>
+        </div>
+        <div className="do-summary-card">
+          <span className="do-summary-number">{stats.totalEventsWeight.toFixed(2)} kg</span>
+          <span className="do-summary-label">Total Waste Weight</span>
+        </div>
+      </div>
 
       {/* ── Waste trend ── */}
       <div className="do-card do-card-full">
@@ -198,71 +161,82 @@ const DashboardOverview = () => {
       <div className="do-card do-card-full">
         <div className="do-card-header">
           <p className="do-card-title" style={{ margin: 0 }}>Priority bins</p>
-          {priorityBins.length > 0
-            ? <span className="do-badge do-badge-warn">{priorityBins.length} need attention</span>
+          {stats.priorityBins.length > 0
+            ? <span className="do-badge do-badge-warn">{stats.priorityBins.length} need attention</span>
             : <span className="do-badge do-badge-ok">All bins normal</span>
           }
         </div>
 
         {bins.length === 0 ? (
-          <div className="do-all-ok">
-            <p>No bins data available</p>
-          </div>
-        ) : priorityBins.length === 0 ? (
+          <div className="do-all-ok"><p>No bins data available</p></div>
+
+        ) : stats.priorityBins.length === 0 ? (
+          // Show all bins with their fill level labels even when none are priority
           <div className="do-all-ok">
             <span className="do-ok-icon">✓</span>
             <p>No bins require immediate collection (threshold: 75%)</p>
-            {bins.map((bin, idx) => (
-              <div key={idx} className="do-priority-row" style={{ marginTop: '10px' }}>
-                <div className="do-priority-left">
-                  <span className="do-priority-name">{bin.bin_name}</span>
-                  <span className="do-priority-type">{bin.bin_type}</span>
-                </div>
-                <div className="do-priority-center">
-                  <div className="do-fill-bar-bg">
-                    <div
-                      className="do-fill-bar-fill"
-                      style={{
-                        width: `${bin.fillLevel}%`,
-                        background: getFillBarColor(bin.fillLevel),
-                      }}
-                    />
-                  </div>
-                </div>
-                <div className="do-priority-right">
-                  <span className="do-fill-pct">{bin.fillLevel}%</span>
-                  <span className="do-status-tag" style={{
-                    background: `${getStatusColor('Active')}18`,
-                    color: getStatusColor('Active'),
-                  }}>Active</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="do-priority-list">
-            {priorityBins.map((bin, i) => {
-              const status = bin.status || getBinStatus(bin.fillLevel ?? 0);
+            {bins.map((bin, idx) => {
+              const fill = bin.fillLevel ?? 0;
+              const fillLabel = getFillLabel(fill);
               return (
-                <div key={bin._id ?? bin.id ?? i} className="do-priority-row">
+                <div key={idx} className="do-priority-row" style={{ marginTop: '10px' }}>
                   <div className="do-priority-left">
-                    <span className="do-priority-dot" style={{ background: getFillBarColor(bin.fillLevel ?? 0) }} />
-                    <span className="do-priority-name">{bin.bin_name ?? `Bin ${i + 1}`}</span>
-                    <span className="do-priority-type">{bin.bin_type ?? '—'}</span>
+                    <span className="do-priority-dot" style={{ background: getFillBarColor(fill) }} />
+                    <span className="do-priority-name">{bin.bin_name}</span>
+                    <span className="do-priority-type">{bin.bin_type}</span>
                   </div>
                   <div className="do-priority-center">
                     <div className="do-fill-bar-bg">
                       <div
                         className="do-fill-bar-fill"
-                        style={{
-                          width: `${bin.fillLevel ?? 0}%`,
-                          background: getFillBarColor(bin.fillLevel ?? 0),
-                        }}
+                        style={{ width: `${fill}%`, background: getFillBarColor(fill) }}
                       />
                     </div>
                   </div>
                   <div className="do-priority-right">
-                    <span className="do-fill-pct">{bin.fillLevel ?? 0}%</span>
+                    <span className="do-fill-pct">{fill}%</span>
+                    {/* ✅ Fill label badge */}
+                    <span
+                      className="do-status-tag"
+                      style={{
+                        background: `${fillLabel.color}18`,
+                        color: fillLabel.color,
+                        border: `1px solid ${fillLabel.color}40`,
+                      }}
+                    >
+                      {fillLabel.text}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+        ) : (
+          // Priority bins list with fill labels
+          <div className="do-priority-list">
+            {stats.priorityBins.map((bin, i) => {
+              const fill   = bin.fillLevel ?? 0;
+              const status = bin.status || getBinStatus(fill);
+              const fillLabel = getFillLabel(fill);
+              return (
+                <div key={bin._id ?? i} className="do-priority-row">
+                  <div className="do-priority-left">
+                    <span className="do-priority-dot" style={{ background: getFillBarColor(fill) }} />
+                    <span className="do-priority-name">{bin.bin_name}</span>
+                    <span className="do-priority-type">{bin.bin_type}</span>
+                  </div>
+                  <div className="do-priority-center">
+                    <div className="do-fill-bar-bg">
+                      <div
+                        className="do-fill-bar-fill"
+                        style={{ width: `${fill}%`, background: getFillBarColor(fill) }}
+                      />
+                    </div>
+                  </div>
+                  <div className="do-priority-right">
+                    <span className="do-fill-pct">{fill}%</span>
+                    {/* ✅ Shows both status (Full/Near Full) AND fill label (CRITICAL/HIGH) */}
                     <span
                       className="do-status-tag"
                       style={{
@@ -272,6 +246,17 @@ const DashboardOverview = () => {
                       }}
                     >
                       {status}
+                    </span>
+                    <span
+                      className="do-status-tag"
+                      style={{
+                        background: `${fillLabel.color}18`,
+                        color: fillLabel.color,
+                        border: `1px solid ${fillLabel.color}40`,
+                        marginLeft: 4,
+                      }}
+                    >
+                      {fillLabel.text}
                     </span>
                   </div>
                 </div>
