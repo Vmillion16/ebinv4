@@ -33,9 +33,9 @@ mongoose.connect(process.env.MONGODB_URI)
     console.log('✅ MongoDB Connected!');
     console.log('📊 Database name:', mongoose.connection.name);
   })
-  .catch(err => { 
+  .catch(err => {
     console.error('❌ MongoDB Error:', err.message);
-    process.exit(1); 
+    process.exit(1);
   });
 
 const SECRET_KEY = process.env.JWT_SECRET || 'ebin-secret-2026';
@@ -365,7 +365,7 @@ app.get('/api/collections', async (req, res) => {
       .sort({ collected_at: -1 })
       .populate('bin_id', 'bin_name location')
       .populate('staff_id', 'full_name username');
-    
+
     const formattedLogs = logs.map(log => ({
       id:          log._id,
       datetime:    log.collected_at,
@@ -376,12 +376,12 @@ app.get('/api/collections', async (req, res) => {
       status:      log.status,
       destination: log.destination || 'Recycling Center'
     }));
-    
+
     const totalWeight   = logs.reduce((sum, log) => sum + (log.weight_kg || 0), 0);
     const today         = new Date();
     today.setHours(0, 0, 0, 0);
     const todayLogs     = logs.filter(log => new Date(log.collected_at) >= today);
-    
+
     res.json({
       success: true,
       data: formattedLogs,
@@ -404,7 +404,7 @@ app.get('/api/collections/:id', async (req, res) => {
     const log = await CollectionLog.findById(req.params.id)
       .populate('bin_id', 'bin_name location')
       .populate('staff_id', 'full_name username');
-    
+
     if (!log) return res.status(404).json({ success: false, error: 'Not found' });
     res.json({ success: true, data: log });
   } catch (error) {
@@ -415,7 +415,7 @@ app.get('/api/collections/:id', async (req, res) => {
 app.post('/api/collections', auth, async (req, res) => {
   try {
     const { bin_id, waste_type, weight_kg, destination, status } = req.body;
-    
+
     const log = new CollectionLog({
       bin_id,
       staff_id:    req.user.userId,
@@ -424,10 +424,10 @@ app.post('/api/collections', auth, async (req, res) => {
       destination: destination || 'Recycling Center',
       status:      status || 'Done'
     });
-    
+
     await log.save();
     await Bin.findByIdAndUpdate(bin_id, { fill_level: 0, weight_kg: 0, status: 'Active' });
-    
+
     res.status(201).json({ success: true, data: log });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -448,7 +448,7 @@ app.get('/api/collections/stats/dashboard', async (req, res) => {
   try {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     const totalCollections = await CollectionLog.countDocuments();
     const todayCollections = await CollectionLog.countDocuments({ collected_at: { $gte: today } });
     const totalWeight      = await CollectionLog.aggregate([{ $group: { _id: null, total: { $sum: '$weight_kg' } } }]);
@@ -456,7 +456,7 @@ app.get('/api/collections/stats/dashboard', async (req, res) => {
       { $match: { collected_at: { $gte: today } } },
       { $group: { _id: null, total: { $sum: '$weight_kg' } } }
     ]);
-    
+
     res.json({
       success: true,
       data: {
@@ -481,7 +481,7 @@ app.get('/api/rewards', async (req, res) => {
       .sort({ started_at: -1 })
       .populate('event_id', 'waste_type weight_kg')
       .populate('port_id', 'name');
-    
+
     const formattedRewards = rewards.map(reward => ({
       id:        reward._id,
       time:      reward.started_at,
@@ -492,12 +492,12 @@ app.get('/api/rewards', async (req, res) => {
       weight:    reward.event_id?.weight_kg ? `${reward.event_id.weight_kg} kg` : '—',
       points:    reward.points_earned
     }));
-    
+
     const grantedRewards = rewards.filter(r => r.result === 'Granted');
     const today          = new Date();
     today.setHours(0, 0, 0, 0);
     const todayRewards   = rewards.filter(r => new Date(r.started_at) >= today && r.result === 'Granted');
-    
+
     res.json({
       success: true,
       data: formattedRewards,
@@ -520,7 +520,7 @@ app.get('/api/rewards/:id', async (req, res) => {
     const reward = await RewardSession.findById(req.params.id)
       .populate('event_id', 'waste_type weight_kg item_label')
       .populate('port_id', 'name status');
-    
+
     if (!reward) return res.status(404).json({ success: false, error: 'Not found' });
     res.json({ success: true, data: reward });
   } catch (error) {
@@ -531,7 +531,7 @@ app.get('/api/rewards/:id', async (req, res) => {
 app.post('/api/rewards', auth, async (req, res) => {
   try {
     const { event_id, port_id, duration_min, points_earned } = req.body;
-    
+
     const reward = new RewardSession({
       event_id,
       port_id,
@@ -541,10 +541,10 @@ app.post('/api/rewards', auth, async (req, res) => {
       result:        'Granted',
       started_at:    new Date()
     });
-    
+
     await reward.save();
     await User.findByIdAndUpdate(req.user.userId, { $inc: { points: points_earned || 10, total_rewards: 1 } });
-    
+
     res.status(201).json({ success: true, data: reward });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -555,15 +555,15 @@ app.put('/api/rewards/:id/end', auth, async (req, res) => {
   try {
     const reward = await RewardSession.findById(req.params.id);
     if (!reward) return res.status(404).json({ success: false, error: 'Not found' });
-    
-    reward.ended_at      = new Date();
-    reward.duration_min  = Math.ceil((reward.ended_at - reward.started_at) / 60000);
+
+    reward.ended_at     = new Date();
+    reward.duration_min = Math.ceil((reward.ended_at - reward.started_at) / 60000);
     await reward.save();
-    
+
     if (reward.port_id) {
       await ChargingPort.findByIdAndUpdate(reward.port_id, { status: 'Available' });
     }
-    
+
     res.json({ success: true, data: reward });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -574,7 +574,7 @@ app.get('/api/rewards/dashboard/stats', async (req, res) => {
   try {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     const totalRewards = await RewardSession.countDocuments({ result: 'Granted' });
     const todayRewards = await RewardSession.countDocuments({ started_at: { $gte: today }, result: 'Granted' });
     const totalPoints  = await RewardSession.aggregate([
@@ -585,7 +585,7 @@ app.get('/api/rewards/dashboard/stats', async (req, res) => {
       { $match: { started_at: { $gte: today }, result: 'Granted' } },
       { $group: { _id: null, total: { $sum: '$points_earned' } } }
     ]);
-    
+
     res.json({
       success: true,
       data: {
@@ -608,7 +608,7 @@ app.get('/api/dashboard', auth, async (req, res) => {
     const totalBins    = await Bin.countDocuments();
     const fullBins     = await Bin.countDocuments({ status: 'Full' });
     const priorityBins = await Bin.find({ fill_level: { $gte: 75 } }).sort({ fill_level: -1 }).limit(5);
-    
+
     res.json({
       totalBins,
       fullBins,
@@ -643,6 +643,45 @@ app.put('/api/bins/:id/reset', auth, async (req, res) => {
   res.json({ message: 'Bin reset successfully', bin: mapBin(bin) });
 });
 
+// ─────────────────────────────────────────────────────────────
+// 14. BIN CLEAR HISTORY  ← NEW ROUTE (fixes Mark Empty)
+// ─────────────────────────────────────────────────────────────
+
+// DELETE /api/bins/:id/clear-history
+// Called by BinMonitoring.js after the ESP32 fill-level reset.
+// Permanently removes all WasteEvents and CollectionLogs for the bin
+// so they cannot reappear on the next data fetch.
+app.delete('/api/bins/:id/clear-history', auth, async (req, res) => {
+  try {
+    const bin = await Bin.findById(req.params.id);
+    if (!bin) return res.status(404).json({ success: false, error: 'Bin not found' });
+
+    const [eventsResult, logsResult] = await Promise.all([
+      WasteEvent.deleteMany({ bin_id: req.params.id }),
+      CollectionLog.deleteMany({ bin_id: req.params.id }),
+    ]);
+
+    console.log(
+      `🗑️  clear-history → ${bin.bin_name}: ` +
+      `${eventsResult.deletedCount} event(s), ${logsResult.deletedCount} log(s) deleted`
+    );
+
+    res.json({
+      success:       true,
+      message:       `History cleared for "${bin.bin_name}"`,
+      deletedEvents: eventsResult.deletedCount,
+      deletedLogs:   logsResult.deletedCount,
+    });
+  } catch (err) {
+    console.error('❌ clear-history error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// 15. REMAINING ROUTES
+// ─────────────────────────────────────────────────────────────
+
 app.get('/api/waste-events', auth, async (req, res) => {
   const events = await WasteEvent.find().sort({ detected_at: -1 }).limit(100).populate('bin_id', 'bin_name');
   res.json(events);
@@ -660,7 +699,7 @@ app.get('/api/settings', auth, async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
-// 14. ESP32 ROUTES (No auth needed - device access)
+// 16. ESP32 ROUTES (No auth needed - device access)
 // ─────────────────────────────────────────────────────────────
 
 // ESP32 → Update bin fill level
@@ -816,7 +855,7 @@ app.post('/api/esp32/events', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
-// 15. SEED DATA
+// 17. SEED DATA
 // ─────────────────────────────────────────────────────────────
 async function seedData() {
   if (await User.countDocuments() === 0) {
@@ -829,7 +868,7 @@ async function seedData() {
     });
     console.log('✅ Admin user created');
   }
-  
+
   if (await Bin.countDocuments() === 0) {
     await Bin.create([
       { bin_name: 'Bio Bin A',     location: 'Building A', bin_type: 'Biodegradable',     fill_level: 0, status: 'Active' },
@@ -838,7 +877,7 @@ async function seedData() {
     ]);
     console.log('✅ Bins seeded (3 bins: Bio, Non-Bio, Recycle)');
   }
-  
+
   if (await ChargingPort.countDocuments() === 0) {
     await ChargingPort.create([
       { name: 'Port A', status: 'Available' },
@@ -851,16 +890,17 @@ async function seedData() {
 seedData();
 
 // ─────────────────────────────────────────────────────────────
-// 16. START SERVER
+// 18. START SERVER
 // ─────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📊 Health:       http://localhost:${PORT}/api/health`);
-  console.log(`📋 Collections:  http://localhost:${PORT}/api/collections`);
-  console.log(`🎁 Rewards:      http://localhost:${PORT}/api/rewards`);
-  console.log(`📡 ESP32 Sensor: http://localhost:${PORT}/api/esp32/sensors/update`);
-  console.log(`💓 ESP32 Health: http://localhost:${PORT}/api/esp32/device/health`);
-  console.log(`🗑️  ESP32 Collect:http://localhost:${PORT}/api/esp32/collection/record`);
-  console.log(`⚡ ESP32 Events: http://localhost:${PORT}/api/esp32/events`);
+  console.log(`📊 Health:          http://localhost:${PORT}/api/health`);
+  console.log(`📋 Collections:     http://localhost:${PORT}/api/collections`);
+  console.log(`🎁 Rewards:         http://localhost:${PORT}/api/rewards`);
+  console.log(`🗑️  Clear History:   http://localhost:${PORT}/api/bins/:id/clear-history`);
+  console.log(`📡 ESP32 Sensor:    http://localhost:${PORT}/api/esp32/sensors/update`);
+  console.log(`💓 ESP32 Health:    http://localhost:${PORT}/api/esp32/device/health`);
+  console.log(`🗑️  ESP32 Collect:   http://localhost:${PORT}/api/esp32/collection/record`);
+  console.log(`⚡ ESP32 Events:    http://localhost:${PORT}/api/esp32/events`);
 });
