@@ -1,10 +1,19 @@
 // BinMonitoring.js
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import './BinMonitoring.css';
 import { useEbin } from '../EbinContext';
+import { io } from 'socket.io-client';
 
 const BASE_URL   = "https://ebinv4-1.onrender.com";
 const SENSOR_URL = `${BASE_URL}/api/esp32/sensors/update`;
+
+// Create socket connection
+const socket = io(BASE_URL, {
+  transports: ['websocket', 'polling'],
+  reconnection: true,
+  reconnectionAttempts: 5,
+  reconnectionDelay: 1000
+});
 
 const getFullTypeName = (type) => {
   if (type === 'Biodegradable')     return 'Biodegradable';
@@ -50,15 +59,15 @@ const EmptyConfirmModal = ({ bin, onConfirm, onCancel, loading }) => (
       <div className="modal-icon">🗑️</div>
       <h3 className="modal-title">Mark Bin as Emptied?</h3>
       <p className="modal-desc">
-        This will reset <strong>{bin.bin_name}</strong> ({getFullTypeName(bin.bin_type)}) fill level back to <strong>0%</strong> and mark it as <strong>ACTIVE</strong>.
+        This will <strong>PERMANENTLY DELETE</strong> all waste history and reset <strong>{bin.bin_name}</strong> ({getFullTypeName(bin.bin_type)}) fill level back to <strong>0%</strong>.
       </p>
-      <p className="modal-warning">Only do this after the bin has been physically emptied.</p>
+      <p className="modal-warning">⚠️ This action cannot be undone! All waste events and collection logs for this bin will be permanently deleted.</p>
       <div className="modal-actions">
         <button className="modal-btn modal-btn-cancel" onClick={onCancel} disabled={loading}>
           Cancel
         </button>
         <button className="modal-btn modal-btn-confirm" onClick={onConfirm} disabled={loading}>
-          {loading ? 'Resetting...' : '✅ Yes, Bin is Empty'}
+          {loading ? 'Deleting & Resetting...' : '🗑️ Yes, Delete History & Empty'}
         </button>
       </div>
     </div>
@@ -122,9 +131,9 @@ const BinRow = ({ bin, onEmptyClick }) => {
         <button
           className={`empty-bin-btn ${isFull ? 'empty-bin-btn-urgent' : ''}`}
           onClick={() => onEmptyClick(bin)}
-          title="Mark this bin as emptied — resets fill level to 0%"
+          title="Permanently delete all waste history and reset bin fill level to 0%"
         >
-          {isFull ? '🚨 Empty Now' : '🗑️ Mark Empty'}
+          {isFull ? '🚨 Empty & Delete History' : '🗑️ Delete History & Empty'}
         </button>
       </td>
     </tr>
@@ -167,8 +176,8 @@ const StatsCard = ({ bins, stats }) => (
 const BinMonitoring = () => {
   const {
     bins, stats, loadingBins, errorBins,
-    fetchBins,            // ← only refresh bins after emptying
-    refreshAll,           // ← used for the manual refresh button
+    fetchBins,
+    refreshAll,
     clearEventsForBin,
     resetClearedTypes,
   } = useEbin();
@@ -176,19 +185,112 @@ const BinMonitoring = () => {
   const [confirmBin,  setConfirmBin]  = useState(null);
   const [resetting,   setResetting]   = useState(false);
   const [resetResult, setResetResult] = useState(null);
+  const [socketConnected, setSocketConnected] = useState(false);
 
   const sortedBins = useMemo(() => [...bins].sort((a, b) => {
     const order = { Biodegradable: 1, Recyclable: 2, 'Non-Biodegradable': 3 };
     return (order[a.bin_type] || 99) - (order[b.bin_type] || 99);
   }), [bins]);
 
-  // ── Called when user confirms emptying ──
+  // Socket.io connection and event listeners
+  useEffect(() => {
+    // Connection events
+    socket.on('connect', () => {
+      console.log('✅ Socket connected for real-time updates');
+      setSocketConnected(true);
+    });
+
+    socket.on('disconnect', () => {
+      console.log('❌ Socket disconnected');
+      setSocketConnected(false);
+    });
+
+    socket.on('connect_error', (error) => {
+      console.error('Socket connection error:', error);
+      setSocketConnected(false);
+    });
+
+    // Listen for bin update events from server
+    socket.on('bin-updated', async (data) => {
+      console.log('📡 Real-time bin update received:', data);
+      
+      if (data.type === 'CLEARED' || data.type === 'RESET') {
+        // Show notification
+        setResetResult({
+          success: true,
+          message: `🔄 Real-time update: ${data.binName} has been emptied${data.deletedBy ? ` by ${data.deletedBy}` : ''}! Refreshing data...`
+        });
+        
+        // Refresh bins to get updated data
+        await fetchBins();
+        
+        // Clear the notification after 3 seconds
+        setTimeout(() => setResetResult(null), 3000);
+      }
+      
+      if (data.type === 'HISTORY_DELETED') {
+        setResetResult({
+          success: true,
+          message: `🗑️ All waste history for ${data.binName} has been permanently deleted!`
+        });
+        await fetchBins();
+        setTimeout(() => setResetResult(null), 3000);
+      }
+    });
+
+    // Cleanup on component unmount
+    return () => {
+      socket.off('connect');
+      socket.off('disconnect');
+      socket.off('connect_error');
+      socket.off('bin-updated');
+    };
+  }, [fetchBins]);
+
+  // ── Called when user confirms emptying - NOW DELETES HISTORY ──
   const handleEmptyConfirm = async () => {
     if (!confirmBin) return;
     setResetting(true);
 
     try {
-      const res = await fetch(SENSOR_URL, {
+      const token = localStorage.getItem('token');
+      
+      // STEP 1: Delete ALL history for this bin (WasteEvents + CollectionLogs)
+      console.log(`🗑️ Deleting history for bin: ${confirmBin._id}`);
+      const deleteHistoryRes = await fetch(`${BASE_URL}/api/bins/${confirmBin._id}/clear-history`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!deleteHistoryRes.ok) {
+        const errorData = await deleteHistoryRes.json();
+        throw new Error(errorData.error || 'Failed to delete bin history');
+      }
+
+      const deleteResult = await deleteHistoryRes.json();
+      console.log('History deletion result:', deleteResult);
+
+      // STEP 2: Reset bin fill level to 0
+      const resetRes = await fetch(`${BASE_URL}/api/bins/${confirmBin._id}/reset`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!resetRes.ok) {
+        throw new Error('Failed to reset bin fill level');
+      }
+
+      const resetResult_data = await resetRes.json();
+      console.log('Reset result:', resetResult_data);
+
+      // STEP 3: Also call ESP32 sensor endpoint for immediate UI update
+      await fetch(SENSOR_URL, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -197,26 +299,29 @@ const BinMonitoring = () => {
           weight_kg: 0,
           status:    'ACTIVE',
         }),
-      });
+      }).catch(err => console.warn('ESP32 update failed:', err));
 
-      if (res.ok) {
-        setResetResult({
-          success: true,
-          message: `✅ ${confirmBin.bin_name} has been marked as emptied and reset to 0%.`,
-        });
-        // 1. Hide events for this bin type in WasteSegregation
-        clearEventsForBin(confirmBin.bin_type);
-        // 2. Only re-fetch bins (NOT events) so cleared events don't come back
-        await fetchBins();
-      } else {
-        const err = await res.json().catch(() => ({}));
-        setResetResult({
-          success: false,
-          message: `❌ Failed to reset bin: ${err.message || res.statusText}`,
-        });
-      }
+      setResetResult({
+        success: true,
+        message: `✅ ${confirmBin.bin_name} has been emptied and ALL waste history permanently deleted! ${deleteResult.deletedEvents || 0} events and ${deleteResult.deletedLogs || 0} logs removed.`
+      });
+      
+      // Clear events for this bin type in WasteSegregation
+      clearEventsForBin(confirmBin.bin_type);
+      
+      // Refresh bins to show updated data
+      await fetchBins();
+      
+      // Auto-hide notification after 5 seconds
+      setTimeout(() => setResetResult(null), 5000);
+      
     } catch (e) {
-      setResetResult({ success: false, message: `❌ Network error: ${e.message}` });
+      console.error('Error emptying bin:', e);
+      setResetResult({ 
+        success: false, 
+        message: `❌ Failed to empty bin: ${e.message}` 
+      });
+      setTimeout(() => setResetResult(null), 5000);
     } finally {
       setResetting(false);
       setConfirmBin(null);
@@ -227,6 +332,11 @@ const BinMonitoring = () => {
   const handleManualRefresh = () => {
     resetClearedTypes();  // unblock any cleared types
     refreshAll();         // re-fetch bins + events fresh
+    setResetResult({
+      success: true,
+      message: '🔄 Manual refresh complete! Data reloaded from server.'
+    });
+    setTimeout(() => setResetResult(null), 3000);
   };
 
   // ── Loading / error states ──
@@ -236,6 +346,7 @@ const BinMonitoring = () => {
         <div className="loading-state">
           <div className="spinner"></div>
           <p>Loading bin data...</p>
+          {!socketConnected && <p className="socket-warning">⚠️ Connecting to real-time server...</p>}
         </div>
       </div>
     );
@@ -275,6 +386,8 @@ const BinMonitoring = () => {
       <div className="monitoring-header">
         <h1>🗑️ Bin Monitoring</h1>
         <p>Real-time waste bin status and fill levels</p>
+        {socketConnected && <span className="live-badge">🟢 LIVE</span>}
+        {!socketConnected && <span className="offline-badge">🔴 OFFLINE</span>}
       </div>
 
       <StatsCard bins={bins} stats={stats} />
@@ -284,7 +397,6 @@ const BinMonitoring = () => {
           <h3>All Bins</h3>
           <div className="table-stats">
             <span>{bins.length} total bins</span>
-            {/* Manual refresh also restores cleared event history */}
             <button className="refresh-button" onClick={handleManualRefresh} title="Refresh">🔄</button>
           </div>
         </div>
@@ -314,8 +426,9 @@ const BinMonitoring = () => {
         </div>
 
         <p className="table-note">
-          💡 Press <strong>"Mark Empty"</strong> after physically collecting waste to reset the fill level to 0%.
-          Bins at 90%+ are highlighted as 🚨 urgent.
+          💡 Press <strong>"Delete History & Empty"</strong> to permanently delete all waste records and reset the bin to 0%.
+          🗑️ This action <strong>cannot be undone</strong> and will remove all waste events and collection logs for this bin.
+          🟢 <strong>LIVE</strong> indicator shows real-time updates are active.
         </p>
       </div>
     </div>

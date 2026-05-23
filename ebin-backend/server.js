@@ -6,12 +6,30 @@ const cors       = require('cors');
 const jwt        = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 const rateLimit  = require('express-rate-limit');
-
+const http = require('http');
+const socketIo = require('socket.io');
 // ─────────────────────────────────────────────────────────────
 // 1. APP
 // ─────────────────────────────────────────────────────────────
 const app = express();
+const server = http.createServer(app);
+const io = socketIo(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
 
+// Make io accessible in routes
+app.set('io', io);
+
+// Socket connection handler
+io.on('connection', (socket) => {
+  console.log('🟢 Client connected:', socket.id);
+  socket.on('disconnect', () => {
+    console.log('🔴 Client disconnected:', socket.id);
+  });
+});
 // ─────────────────────────────────────────────────────────────
 // 2. MIDDLEWARE
 // ─────────────────────────────────────────────────────────────
@@ -602,6 +620,26 @@ app.get('/api/rewards/dashboard/stats', async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 // 13. OTHER EXISTING ROUTES
 // ─────────────────────────────────────────────────────────────
+app.put('/api/bins/:id/reset', auth, async (req, res) => {
+  const bin = await Bin.findByIdAndUpdate(
+    req.params.id,
+    { status: 'Active', fill_level: 0, weight_kg: 0, last_updated: new Date() },
+    { new: true }
+  );
+  
+  // EMIT REAL-TIME UPDATE
+  const io = req.app.get('io');
+  io.emit('bin-updated', {
+    type: 'RESET',
+    binId: req.params.id,
+    binName: bin.bin_name,
+    bin: mapBin(bin),
+    timestamp: new Date()
+  });
+  
+  res.json({ message: 'Bin reset successfully', bin: mapBin(bin) });
+});
+
 
 app.get('/api/dashboard', auth, async (req, res) => {
   try {
@@ -661,23 +699,28 @@ app.delete('/api/bins/:id/clear-history', auth, async (req, res) => {
       CollectionLog.deleteMany({ bin_id: req.params.id }),
     ]);
 
-    console.log(
-      `🗑️  clear-history → ${bin.bin_name}: ` +
-      `${eventsResult.deletedCount} event(s), ${logsResult.deletedCount} log(s) deleted`
-    );
+    // EMIT REAL-TIME UPDATE
+    const io = req.app.get('io');
+    io.emit('bin-updated', {
+      type: 'HISTORY_DELETED',
+      binId: req.params.id,
+      binName: bin.bin_name,
+      deletedEvents: eventsResult.deletedCount,
+      deletedLogs: logsResult.deletedCount,
+      timestamp: new Date()
+    });
 
     res.json({
-      success:       true,
-      message:       `History cleared for "${bin.bin_name}"`,
+      success: true,
+      message: `History cleared for "${bin.bin_name}"`,
       deletedEvents: eventsResult.deletedCount,
-      deletedLogs:   logsResult.deletedCount,
+      deletedLogs: logsResult.deletedCount,
     });
   } catch (err) {
     console.error('❌ clear-history error:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
-
 // ─────────────────────────────────────────────────────────────
 // 15. REMAINING ROUTES
 // ─────────────────────────────────────────────────────────────
@@ -893,7 +936,7 @@ seedData();
 // 18. START SERVER
 // ─────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 Health:          http://localhost:${PORT}/api/health`);
   console.log(`📋 Collections:     http://localhost:${PORT}/api/collections`);
