@@ -164,7 +164,6 @@ const WasteSegregation = () => {
         <p className="ws-log-note">
           💡 "Fallback" means the system could not classify the item and defaulted to Non-Biodegradable.
           <br />
-          📊 Data is shared in real-time across all dashboard pages.
         </p>
       </div>
     </div>

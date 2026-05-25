@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './Settings.css';
 import API_URL from '../config';
 
-// ─── Initial state ─────────────────────────────────────────────────────────
+// ─── Initial state (odor and notification settings removed) ─────────────────
 const DEFAULTS = {
   // Bin thresholds
   fullThreshold:     90,
@@ -14,11 +14,6 @@ const DEFAULTS = {
   collectionTime:    '14:00',
   municipalPickup:   ['Tuesday', 'Saturday'],
 
-  // Odor & ventilation
-  odorEnabled:       true,
-  fanTriggerLevel:   60,
-  fanDuration:       10,
-
   // Solar & power
   lowBatteryAlert:   20,
   reducedModeLevel:  10,
@@ -27,15 +22,6 @@ const DEFAULTS = {
   rewardEnabled:     true,
   chargingDuration:  20,
   rewardWasteType:   'Recyclable',
-
-  // Notifications
-  emailEnabled:      true,
-  emailAddress:      'admin@pdm.edu.ph',
-  smsEnabled:        false,
-  smsNumber:         '',
-  notifyOnFull:      true,
-  notifyOnOverflow:  true,
-  notifyOnLowPower:  true,
 
   // Account
   adminName:         'Eriza Enriquez-Santos',
@@ -49,10 +35,8 @@ const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
 const SECTIONS = [
   { key: 'bins',         label: 'Bin thresholds' },
   { key: 'collection',   label: 'Collection schedule' },
-  { key: 'odor',         label: 'Odor & ventilation' },
   { key: 'power',        label: 'Solar & power' },
   { key: 'reward',       label: 'Reward system' },
-  { key: 'notif',        label: 'Notifications' },
   { key: 'account',      label: 'Account' },
 ];
 
@@ -132,6 +116,7 @@ const Settings = () => {
   const [active, setActive] = useState('bins');
   const [toast, setToast]   = useState(null);
   const [pwError, setPwError] = useState('');
+  const [loading, setLoading] = useState(true);
 
   const dirty = JSON.stringify(s) !== JSON.stringify(saved);
 
@@ -142,7 +127,33 @@ const Settings = () => {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const handleSave = () => {
+  // Load settings from backend on mount
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch(`${API_URL}/settings`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          // Merge with defaults in case some fields are missing
+          const loaded = { ...DEFAULTS, ...data };
+          setS(loaded);
+          setSaved(loaded);
+        } else {
+          console.error('Failed to load settings');
+        }
+      } catch (err) {
+        console.error('Error loading settings', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadSettings();
+  }, []);
+
+  const handleSave = async () => {
     // Password validation
     if (s.newPassword) {
       if (s.newPassword.length < 6) {
@@ -157,8 +168,39 @@ const Settings = () => {
       }
     }
     setPwError('');
-    setSaved({ ...s });
-    showToast('Settings saved successfully.');
+
+    try {
+      const token = localStorage.getItem('token');
+      // Do not send password fields unless they are filled
+      const payload = { ...s };
+      if (!payload.newPassword) {
+        delete payload.currentPassword;
+        delete payload.newPassword;
+        delete payload.confirmPassword;
+      }
+      const res = await fetch(`${API_URL}/settings`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setSaved({ ...s });
+        showToast('Settings saved successfully.');
+        // Clear password fields after save
+        update('currentPassword', '');
+        update('newPassword', '');
+        update('confirmPassword', '');
+      } else {
+        const error = await res.json();
+        showToast(error.error || 'Failed to save settings.', 'error');
+      }
+    } catch (err) {
+      showToast('Network error.', 'error');
+    }
   };
 
   const handleReset = () => {
@@ -166,10 +208,21 @@ const Settings = () => {
     setPwError('');
   };
 
-  const handleRestoreDefaults = () => {
+  const handleRestoreDefaults = async () => {
     setS({ ...DEFAULTS });
-    showToast('Restored to default settings.', 'info');
+    showToast('Restored to default settings. Click Save to persist.', 'info');
   };
+
+  if (loading) {
+    return (
+      <div className="st-page">
+        <div className="loading-container">
+          <div className="spinner"></div>
+          <p>Loading settings...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="st-page">
@@ -214,7 +267,7 @@ const Settings = () => {
               <p className="st-section-title">Bin thresholds</p>
               <p className="st-section-desc">
                 Define fill-level percentages that trigger status changes and notifications.
-                Based on ultrasonic sensor readings from E-Bin hardware.
+                These values are used in Bin Monitoring to determine priority (Normal, Near Full, Full, Overflow).
               </p>
               <div className="st-fields">
                 <Field label="Near-full threshold" hint="Bin status changes to 'Near Full'">
@@ -273,44 +326,6 @@ const Settings = () => {
                 Based on interviews with PDM utility staff, municipal collection operates on
                 Tuesdays and Saturdays. Internal collection should occur before these days
                 to transfer waste from bins to the temporary storage area on time.
-              </div>
-            </div>
-          )}
-
-          {/* ── Odor & ventilation ── */}
-          {active === 'odor' && (
-            <div className="st-section">
-              <p className="st-section-title">Odor & ventilation control</p>
-              <p className="st-section-desc">
-                Configure the exhaust fan behavior for ventilation-based odor control.
-                The fan activates automatically when fill levels exceed the set threshold.
-              </p>
-              <div className="st-fields">
-                <Field label="Ventilation control">
-                  <Toggle
-                    checked={s.odorEnabled}
-                    onChange={(v) => update('odorEnabled', v)}
-                    label="Enable automatic exhaust fan"
-                  />
-                </Field>
-                <Field label="Fan trigger level" hint="Fill % at which the exhaust fan activates">
-                  <NumberInput
-                    value={s.fanTriggerLevel}
-                    onChange={(v) => update('fanTriggerLevel', v)}
-                    unit="%"
-                    min={10}
-                    max={100}
-                  />
-                </Field>
-                <Field label="Fan run duration" hint="How long the fan runs per cycle">
-                  <NumberInput
-                    value={s.fanDuration}
-                    onChange={(v) => update('fanDuration', v)}
-                    unit="min"
-                    min={1}
-                    max={60}
-                  />
-                </Field>
               </div>
             </div>
           )}
@@ -386,71 +401,6 @@ const Settings = () => {
                     <option value="Recyclable">Recyclable only</option>
                     <option value="Any">Any correctly classified waste</option>
                   </select>
-                </Field>
-              </div>
-            </div>
-          )}
-
-          {/* ── Notifications ── */}
-          {active === 'notif' && (
-            <div className="st-section">
-              <p className="st-section-title">Notifications</p>
-              <p className="st-section-desc">
-                Configure how and when the system sends notifications to administrators
-                and utility staff about bin status and system events.
-              </p>
-              <div className="st-fields">
-                <Field label="Email notifications">
-                  <Toggle
-                    checked={s.emailEnabled}
-                    onChange={(v) => update('emailEnabled', v)}
-                    label="Send email notifications"
-                  />
-                </Field>
-                {s.emailEnabled && (
-                  <Field label="Admin email address">
-                    <input
-                      type="email"
-                      className="st-input"
-                      value={s.emailAddress}
-                      placeholder="admin@pdm.edu.ph"
-                      onChange={(e) => update('emailAddress', e.target.value)}
-                    />
-                  </Field>
-                )}
-                <Field label="SMS notifications">
-                  <Toggle
-                    checked={s.smsEnabled}
-                    onChange={(v) => update('smsEnabled', v)}
-                    label="Send SMS notifications"
-                  />
-                </Field>
-                {s.smsEnabled && (
-                  <Field label="Phone number">
-                    <input
-                      type="tel"
-                      className="st-input"
-                      value={s.smsNumber}
-                      placeholder="+63 9XX XXX XXXX"
-                      onChange={(e) => update('smsNumber', e.target.value)}
-                    />
-                  </Field>
-                )}
-                <Field label="Notify when" hint="Select events that trigger notifications">
-                  <div className="st-checks">
-                    <label className="st-check">
-                      <input type="checkbox" checked={s.notifyOnFull} onChange={(e) => update('notifyOnFull', e.target.checked)} />
-                      <span>Bin reaches full threshold</span>
-                    </label>
-                    <label className="st-check">
-                      <input type="checkbox" checked={s.notifyOnOverflow} onChange={(e) => update('notifyOnOverflow', e.target.checked)} />
-                      <span>Bin overflow detected</span>
-                    </label>
-                    <label className="st-check">
-                      <input type="checkbox" checked={s.notifyOnLowPower} onChange={(e) => update('notifyOnLowPower', e.target.checked)} />
-                      <span>Solar battery low</span>
-                    </label>
-                  </div>
                 </Field>
               </div>
             </div>

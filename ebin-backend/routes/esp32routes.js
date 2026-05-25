@@ -145,6 +145,21 @@ router.post('/sensors/update', async (req, res) => {
         status:       bin.status,
         last_updated: bin.last_updated,
       });
+      // Also emit the frontend‑expected 'bin-updated' event
+      io.emit('bin-updated', {
+        type: 'SENSOR_UPDATE',
+        binId: bin._id,
+        binName: bin.bin_name,
+        bin: {
+          _id: bin._id,
+          bin_name: bin.bin_name,
+          bin_type: bin.bin_type,
+          fillLevel: bin.fill_level,
+          weight_kg: bin.weight_kg,
+          status: bin.status
+        },
+        timestamp: new Date()
+      });
     }
 
     console.log(`✅ Sensor update → ${mappedType}: ${bin_level}% | ${weight_kg}kg`);
@@ -258,20 +273,39 @@ router.post('/collection/record', async (req, res) => {
     });
 
     // Reset bin after collection
-    await Bin.findByIdAndUpdate(bin._id, {
-      fill_level:   0,
-      weight_kg:    0,
-      status:       'Active',
-      last_updated: new Date(),
-    });
+    const updatedBin = await Bin.findByIdAndUpdate(
+      bin._id,
+      {
+        fill_level:   0,
+        weight_kg:    0,
+        status:       'Active',
+        last_updated: new Date(),
+      },
+      { new: true }
+    );
 
-    // Emit event
+    // Emit real‑time update for the frontend
     const io = req.app.get('io');
     if (io) {
       io.emit('collection_completed', {
         bin_type:     mappedType,
         weight_kg:    weight_kg,
         collected_at: log.collected_at,
+      });
+      // Emit the frontend‑expected 'bin-updated' event
+      io.emit('bin-updated', {
+        type: 'COLLECTION_RESET',
+        binId: updatedBin._id,
+        binName: updatedBin.bin_name,
+        bin: {
+          _id: updatedBin._id,
+          bin_name: updatedBin.bin_name,
+          bin_type: updatedBin.bin_type,
+          fillLevel: updatedBin.fill_level,
+          weight_kg: updatedBin.weight_kg,
+          status: updatedBin.status
+        },
+        timestamp: new Date()
       });
     }
 
@@ -353,22 +387,72 @@ router.post('/events', async (req, res) => {
       return res.status(404).json({ success: false, error: `No bin found for type: ${mappedType}` });
     }
 
+    const eventWeight = weight_kg || 0;
+
+    // Create waste event
     const event = await WasteEvent.create({
       bin_id:     bin._id,
       waste_type: mappedType,
-      weight_kg:  weight_kg || 0,
+      weight_kg:  eventWeight,
       item_label: event_type || 'ESP32 Detection',
       result:     'Classified',
       detected_at: new Date(),
     });
 
-    console.log(`✅ Waste event logged: ${event_type} | ${mappedType} | ${weight_kg}kg`);
+    // ** UPDATE BIN WEIGHT AND FILL LEVEL **
+    const newWeight = (bin.weight_kg || 0) + eventWeight;
+    // Rough estimate: 1 kg ≈ 1% fill (adjust if needed)
+    const newFill = Math.min(100, (bin.fill_level || 0) + eventWeight);
+    const updatedBin = await Bin.findByIdAndUpdate(
+      bin._id,
+      {
+        weight_kg:    newWeight,
+        fill_level:   newFill,
+        last_updated: new Date(),
+        status:       newFill >= 90 ? 'Full' : 'Active'
+      },
+      { new: true }
+    );
+
+    console.log(`✅ Waste event logged: ${event_type} | ${mappedType} | ${eventWeight}kg`);
+    console.log(`   Bin ${updatedBin.bin_name} → weight: ${newWeight}kg, fill: ${newFill}%`);
+
+    // Emit real‑time update
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('bin_update', {
+        bin_type:     updatedBin.bin_type,
+        fill_level:   updatedBin.fill_level,
+        weight_kg:    updatedBin.weight_kg,
+        status:       updatedBin.status,
+        last_updated: updatedBin.last_updated,
+      });
+      // Emit the frontend‑expected 'bin-updated' event
+      io.emit('bin-updated', {
+        type: 'WEIGHT_UPDATE',
+        binId: updatedBin._id,
+        binName: updatedBin.bin_name,
+        bin: {
+          _id: updatedBin._id,
+          bin_name: updatedBin.bin_name,
+          bin_type: updatedBin.bin_type,
+          fillLevel: updatedBin.fill_level,
+          weight_kg: updatedBin.weight_kg,
+          status: updatedBin.status
+        },
+        timestamp: new Date()
+      });
+    }
 
     res.json({
       success:    true,
-      message:    'Event logged',
+      message:    'Event logged and bin updated',
       event_id:   event._id,
       waste_type: mappedType,
+      bin: {
+        weight_kg: updatedBin.weight_kg,
+        fill_level: updatedBin.fill_level
+      }
     });
 
   } catch (err) {

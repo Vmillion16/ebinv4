@@ -287,11 +287,7 @@ const BinMonitoring = () => {
         </div>
       )}
 
-      <div className="monitoring-header">
-        <h1>🗑️ Bin Monitoring</h1>
-        <p>Real-time waste bin status and fill levels</p>
-      </div>
-
+      
       <StatsCard bins={bins} stats={stats} />
 
       <div className="table-wrapper">

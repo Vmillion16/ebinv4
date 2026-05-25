@@ -7,7 +7,6 @@ import { io } from 'socket.io-client';
 const BASE_URL   = "https://ebinv4-1.onrender.com";
 const SENSOR_URL = `${BASE_URL}/api/esp32/sensors/update`;
 
-// Create socket connection
 const socket = io(BASE_URL, {
   transports: ['websocket', 'polling'],
   reconnection: true,
@@ -22,11 +21,12 @@ const getFullTypeName = (type) => {
   return 'General Waste';
 };
 
-const getPriorityLabel = (fillLevel) => {
-  if (fillLevel >= 90) return { label: 'CRITICAL', cls: 'critical' };
-  if (fillLevel >= 76) return { label: 'HIGH',     cls: 'high' };
-  if (fillLevel >= 51) return { label: 'MEDIUM',   cls: 'medium' };
-  return                       { label: 'LOW',      cls: 'low' };
+// Dynamic priority based on thresholds
+const getPriorityLabel = (fillLevel, thresholds) => {
+  if (fillLevel >= thresholds.overflow) return { label: 'OVERFLOW', cls: 'critical' };
+  if (fillLevel >= thresholds.full)     return { label: 'FULL',     cls: 'high' };
+  if (fillLevel >= thresholds.nearFull) return { label: 'NEAR FULL', cls: 'medium' };
+  return { label: 'NORMAL', cls: 'low' };
 };
 
 const getStatusClass = (status) => {
@@ -74,12 +74,12 @@ const EmptyConfirmModal = ({ bin, onConfirm, onCancel, loading }) => (
   </div>
 );
 
-// ── Individual bin row ────────────────────────────────────────
-const BinRow = ({ bin, onEmptyClick }) => {
-  const { label, cls } = getPriorityLabel(bin.fillLevel);
-  const fillPct        = Math.min(Math.round(bin.fillLevel), 100);
-  const typeColor      = getTypeColor(bin.bin_type);
-  const isFull         = fillPct >= 90;
+// ── Individual bin row (uses dynamic thresholds) ─────────────
+const BinRow = ({ bin, thresholds, onEmptyClick }) => {
+  const { label, cls } = getPriorityLabel(bin.fillLevel, thresholds);
+  const fillPct = Math.min(Math.round(bin.fillLevel), 100);
+  const typeColor = getTypeColor(bin.bin_type);
+  const isFull = fillPct >= thresholds.full;
 
   return (
     <tr className={`bin-row priority-${cls}`}>
@@ -102,9 +102,9 @@ const BinRow = ({ bin, onEmptyClick }) => {
           <div className="fill-bar">
             <div
               className={`fill-bar-fill ${
-                fillPct >= 90 ? 'critical' :
-                fillPct >= 76 ? 'high' :
-                fillPct >= 51 ? 'medium' : 'low'
+                fillPct >= thresholds.overflow ? 'critical' :
+                fillPct >= thresholds.full ? 'high' :
+                fillPct >= thresholds.nearFull ? 'medium' : 'low'
               }`}
               style={{ width: `${fillPct}%` }}
             />
@@ -140,7 +140,7 @@ const BinRow = ({ bin, onEmptyClick }) => {
   );
 };
 
-// ── Stats cards ───────────────────────────────────────────────
+// ── Stats cards (total waste weight uses totalEventsWeight with 2 decimals) ──
 const StatsCard = ({ bins, stats }) => (
   <div className="stats-grid">
     <div className="stat-card">
@@ -160,7 +160,7 @@ const StatsCard = ({ bins, stats }) => (
       </div>
     </div>
     <div className="stat-card">
-      <div className="stat-value">{stats.totalBinWeight.toFixed(1)} kg</div>
+      <div className="stat-value">{stats.totalEventsWeight.toFixed(2)} kg</div>
       <div className="stat-label">Total Waste Weight</div>
       <div className="stat-trend">Across all bins</div>
     </div>
@@ -185,46 +185,51 @@ const BinMonitoring = () => {
   const [confirmBin,  setConfirmBin]  = useState(null);
   const [resetting,   setResetting]   = useState(false);
   const [resetResult, setResetResult] = useState(null);
-  const [socketConnected, setSocketConnected] = useState(false);
+  const [thresholds, setThresholds] = useState({
+    nearFull: 75,
+    full: 90,
+    overflow: 95
+  });
 
   const sortedBins = useMemo(() => [...bins].sort((a, b) => {
     const order = { Biodegradable: 1, Recyclable: 2, 'Non-Biodegradable': 3 };
     return (order[a.bin_type] || 99) - (order[b.bin_type] || 99);
   }), [bins]);
 
-  // Socket.io connection and event listeners
+  // Fetch thresholds from backend settings
   useEffect(() => {
-    // Connection events
-    socket.on('connect', () => {
-      console.log('✅ Socket connected for real-time updates');
-      setSocketConnected(true);
-    });
+    const fetchThresholds = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch(`${BASE_URL}/api/settings`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setThresholds({
+            nearFull: data.nearFullThreshold ?? 75,
+            full: data.fullThreshold ?? 90,
+            overflow: data.overflowThreshold ?? 95
+          });
+        }
+      } catch (err) {
+        console.error('Failed to load thresholds', err);
+      }
+    };
+    fetchThresholds();
+  }, []);
 
-    socket.on('disconnect', () => {
-      console.log('❌ Socket disconnected');
-      setSocketConnected(false);
-    });
-
-    socket.on('connect_error', (error) => {
-      console.error('Socket connection error:', error);
-      setSocketConnected(false);
-    });
-
-    // Listen for bin update events from server
+  // Socket event listeners (real‑time updates)
+  useEffect(() => {
     socket.on('bin-updated', async (data) => {
       console.log('📡 Real-time bin update received:', data);
       
       if (data.type === 'CLEARED' || data.type === 'RESET') {
-        // Show notification
         setResetResult({
           success: true,
           message: `🔄 Real-time update: ${data.binName} has been emptied${data.deletedBy ? ` by ${data.deletedBy}` : ''}! Refreshing data...`
         });
-        
-        // Refresh bins to get updated data
         await fetchBins();
-        
-        // Clear the notification after 3 seconds
         setTimeout(() => setResetResult(null), 3000);
       }
       
@@ -238,16 +243,11 @@ const BinMonitoring = () => {
       }
     });
 
-    // Cleanup on component unmount
     return () => {
-      socket.off('connect');
-      socket.off('disconnect');
-      socket.off('connect_error');
       socket.off('bin-updated');
     };
   }, [fetchBins]);
 
-  // ── Called when user confirms emptying - NOW DELETES HISTORY ──
   const handleEmptyConfirm = async () => {
     if (!confirmBin) return;
     setResetting(true);
@@ -255,8 +255,6 @@ const BinMonitoring = () => {
     try {
       const token = localStorage.getItem('token');
       
-      // STEP 1: Delete ALL history for this bin (WasteEvents + CollectionLogs)
-      console.log(`🗑️ Deleting history for bin: ${confirmBin._id}`);
       const deleteHistoryRes = await fetch(`${BASE_URL}/api/bins/${confirmBin._id}/clear-history`, {
         method: 'DELETE',
         headers: {
@@ -273,7 +271,6 @@ const BinMonitoring = () => {
       const deleteResult = await deleteHistoryRes.json();
       console.log('History deletion result:', deleteResult);
 
-      // STEP 2: Reset bin fill level to 0
       const resetRes = await fetch(`${BASE_URL}/api/bins/${confirmBin._id}/reset`, {
         method: 'PUT',
         headers: {
@@ -286,10 +283,8 @@ const BinMonitoring = () => {
         throw new Error('Failed to reset bin fill level');
       }
 
-      const resetResult_data = await resetRes.json();
-      console.log('Reset result:', resetResult_data);
+      await resetRes.json();
 
-      // STEP 3: Also call ESP32 sensor endpoint for immediate UI update
       await fetch(SENSOR_URL, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -306,13 +301,8 @@ const BinMonitoring = () => {
         message: `✅ ${confirmBin.bin_name} has been emptied and ALL waste history permanently deleted! ${deleteResult.deletedEvents || 0} events and ${deleteResult.deletedLogs || 0} logs removed.`
       });
       
-      // Clear events for this bin type in WasteSegregation
       clearEventsForBin(confirmBin.bin_type);
-      
-      // Refresh bins to show updated data
       await fetchBins();
-      
-      // Auto-hide notification after 5 seconds
       setTimeout(() => setResetResult(null), 5000);
       
     } catch (e) {
@@ -328,10 +318,9 @@ const BinMonitoring = () => {
     }
   };
 
-  // ── Manual refresh: restore events + reload everything ──
   const handleManualRefresh = () => {
-    resetClearedTypes();  // unblock any cleared types
-    refreshAll();         // re-fetch bins + events fresh
+    resetClearedTypes();
+    refreshAll();
     setResetResult({
       success: true,
       message: '🔄 Manual refresh complete! Data reloaded from server.'
@@ -339,14 +328,12 @@ const BinMonitoring = () => {
     setTimeout(() => setResetResult(null), 3000);
   };
 
-  // ── Loading / error states ──
   if (loadingBins && bins.length === 0) {
     return (
       <div className="bin-monitoring">
         <div className="loading-state">
           <div className="spinner"></div>
           <p>Loading bin data...</p>
-          {!socketConnected && <p className="socket-warning">⚠️ Connecting to real-time server...</p>}
         </div>
       </div>
     );
@@ -366,7 +353,6 @@ const BinMonitoring = () => {
 
   return (
     <div className="bin-monitoring">
-
       {confirmBin && (
         <EmptyConfirmModal
           bin={confirmBin}
@@ -383,12 +369,7 @@ const BinMonitoring = () => {
         </div>
       )}
 
-      <div className="monitoring-header">
-        <h1>🗑️ Bin Monitoring</h1>
-        <p>Real-time waste bin status and fill levels</p>
-        {socketConnected && <span className="live-badge">🟢 LIVE</span>}
-        {!socketConnected && <span className="offline-badge">🔴 OFFLINE</span>}
-      </div>
+    
 
       <StatsCard bins={bins} stats={stats} />
 
@@ -418,6 +399,7 @@ const BinMonitoring = () => {
                 <BinRow
                   key={bin._id}
                   bin={bin}
+                  thresholds={thresholds}
                   onEmptyClick={(b) => setConfirmBin(b)}
                 />
               ))}
@@ -428,7 +410,8 @@ const BinMonitoring = () => {
         <p className="table-note">
           💡 Press <strong>"Delete History & Empty"</strong> to permanently delete all waste records and reset the bin to 0%.
           🗑️ This action <strong>cannot be undone</strong> and will remove all waste events and collection logs for this bin.
-          🟢 <strong>LIVE</strong> indicator shows real-time updates are active.
+          <br />
+          📊 Priority thresholds (Normal, Near Full, Full, Overflow) are configured in <strong>Settings → Bin thresholds</strong>.
         </p>
       </div>
     </div>
