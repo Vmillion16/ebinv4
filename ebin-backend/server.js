@@ -8,6 +8,7 @@ const nodemailer = require('nodemailer');
 const rateLimit  = require('express-rate-limit');
 const http = require('http');
 const socketIo = require('socket.io');
+
 // ─────────────────────────────────────────────────────────────
 // 1. APP
 // ─────────────────────────────────────────────────────────────
@@ -30,6 +31,7 @@ io.on('connection', (socket) => {
     console.log('🔴 Client disconnected:', socket.id);
   });
 });
+
 // ─────────────────────────────────────────────────────────────
 // 2. MIDDLEWARE
 // ─────────────────────────────────────────────────────────────
@@ -67,7 +69,7 @@ const transporter = nodemailer.createTransport({
 });
 
 // ─────────────────────────────────────────────────────────────
-// 5. SCHEMAS
+// 5. SCHEMAS (EXPANDED)
 // ─────────────────────────────────────────────────────────────
 
 // ── Users ──────────────────────────────────────────────────
@@ -163,14 +165,32 @@ const maintenanceLogSchema = new mongoose.Schema({
   status:       { type: String, default: 'Done' },
 });
 
-// ── Settings ────────────────────────────────────────────────
+// ── Settings (EXPANDED to store ALL frontend settings) ──────
 const settingsSchema = new mongoose.Schema({
-  fullThreshold:     { type: Number, default: 90 },
-  nearFullThreshold: { type: Number, default: 75 },
-  rewardEnabled:     { type: Boolean, default: true },
-  chargingDuration:  { type: Number, default: 20 },
-  adminName:         { type: String, default: 'Eriza Enriquez-Santos' },
-  updatedAt:         { type: Date, default: Date.now },
+  // Bin thresholds
+  fullThreshold:      { type: Number, default: 90 },
+  nearFullThreshold:  { type: Number, default: 75 },
+  overflowThreshold:  { type: Number, default: 95 },
+
+  // Collection schedule
+  collectionDays:     { type: [String], default: ['Tuesday', 'Saturday'] },
+  collectionTime:     { type: String, default: '14:00' },
+  municipalPickup:    { type: [String], default: ['Tuesday', 'Saturday'] },
+
+  // Solar & power
+  lowBatteryAlert:    { type: Number, default: 20 },
+  reducedModeLevel:   { type: Number, default: 10 },
+
+  // Reward system
+  rewardEnabled:      { type: Boolean, default: true },
+  chargingDuration:   { type: Number, default: 20 },
+  rewardWasteType:    { type: String, default: 'Recyclable' },
+
+  // Account
+  adminName:          { type: String, default: 'Eriza Enriquez-Santos' },
+
+  // Metadata
+  updatedAt:          { type: Date, default: Date.now },
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -205,13 +225,6 @@ const adminOnly = (req, res, next) => {
   next();
 };
 
-const laptopAuth = (req, res, next) => {
-  const apiKey = req.headers['x-api-key'];
-  if (!apiKey || apiKey !== process.env.LAPTOP_API_KEY)
-    return res.status(401).json({ error: 'Invalid API key' });
-  next();
-};
-
 // ─────────────────────────────────────────────────────────────
 // 8. HELPERS
 // ─────────────────────────────────────────────────────────────
@@ -230,7 +243,6 @@ const typeMap = {
 // ─────────────────────────────────────────────────────────────
 // 9. PUBLIC ENDPOINTS
 // ─────────────────────────────────────────────────────────────
-
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', database: 'MongoDB Atlas ✅', timestamp: new Date().toISOString() });
 });
@@ -285,7 +297,6 @@ app.get('/api/waste-events/public/latest', async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 // 10. AUTH ROUTES
 // ─────────────────────────────────────────────────────────────
-
 app.post('/api/register', async (req, res) => {
   try {
     const { username, email, password } = req.body;
@@ -376,7 +387,6 @@ app.post('/api/reset-password', async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 // 11. COLLECTION LOGS ROUTES
 // ─────────────────────────────────────────────────────────────
-
 app.get('/api/collections', async (req, res) => {
   try {
     const logs = await CollectionLog.find()
@@ -492,7 +502,6 @@ app.get('/api/collections/stats/dashboard', async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 // 12. REWARD SESSIONS ROUTES
 // ─────────────────────────────────────────────────────────────
-
 app.get('/api/rewards', async (req, res) => {
   try {
     const rewards = await RewardSession.find()
@@ -618,29 +627,8 @@ app.get('/api/rewards/dashboard/stats', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
-// 13. OTHER EXISTING ROUTES
+// 13. BIN ROUTES
 // ─────────────────────────────────────────────────────────────
-app.put('/api/bins/:id/reset', auth, async (req, res) => {
-  const bin = await Bin.findByIdAndUpdate(
-    req.params.id,
-    { status: 'Active', fill_level: 0, weight_kg: 0, last_updated: new Date() },
-    { new: true }
-  );
-  
-  // EMIT REAL-TIME UPDATE
-  const io = req.app.get('io');
-  io.emit('bin-updated', {
-    type: 'RESET',
-    binId: req.params.id,
-    binName: bin.bin_name,
-    bin: mapBin(bin),
-    timestamp: new Date()
-  });
-  
-  res.json({ message: 'Bin reset successfully', bin: mapBin(bin) });
-});
-
-
 app.get('/api/dashboard', auth, async (req, res) => {
   try {
     const totalBins    = await Bin.countDocuments();
@@ -678,17 +666,22 @@ app.put('/api/bins/:id/reset', auth, async (req, res) => {
     { status: 'Active', fill_level: 0, weight_kg: 0, last_updated: new Date() },
     { new: true }
   );
+  
+  const io = req.app.get('io');
+  io.emit('bin-updated', {
+    type: 'RESET',
+    binId: req.params.id,
+    binName: bin.bin_name,
+    bin: mapBin(bin),
+    timestamp: new Date()
+  });
+  
   res.json({ message: 'Bin reset successfully', bin: mapBin(bin) });
 });
 
 // ─────────────────────────────────────────────────────────────
-// 14. BIN CLEAR HISTORY  ← NEW ROUTE (fixes Mark Empty)
+// 14. BIN CLEAR HISTORY
 // ─────────────────────────────────────────────────────────────
-
-// DELETE /api/bins/:id/clear-history
-// Called by BinMonitoring.js after the ESP32 fill-level reset.
-// Permanently removes all WasteEvents and CollectionLogs for the bin
-// so they cannot reappear on the next data fetch.
 app.delete('/api/bins/:id/clear-history', auth, async (req, res) => {
   try {
     const bin = await Bin.findById(req.params.id);
@@ -699,7 +692,6 @@ app.delete('/api/bins/:id/clear-history', auth, async (req, res) => {
       CollectionLog.deleteMany({ bin_id: req.params.id }),
     ]);
 
-    // EMIT REAL-TIME UPDATE
     const io = req.app.get('io');
     io.emit('bin-updated', {
       type: 'HISTORY_DELETED',
@@ -721,10 +713,10 @@ app.delete('/api/bins/:id/clear-history', auth, async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
-// ─────────────────────────────────────────────────────────────
-// 15. REMAINING ROUTES
-// ─────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────
+// 15. WASTE EVENTS & CHARGING PORTS
+// ─────────────────────────────────────────────────────────────
 app.get('/api/waste-events', auth, async (req, res) => {
   const events = await WasteEvent.find().sort({ detected_at: -1 }).limit(100).populate('bin_id', 'bin_name');
   res.json(events);
@@ -744,8 +736,6 @@ app.get('/api/settings', auth, async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 // 16. ESP32 ROUTES (No auth needed - device access)
 // ─────────────────────────────────────────────────────────────
-
-// ESP32 → Update bin fill level
 app.post('/api/esp32/sensors/update', async (req, res) => {
   try {
     const { bin_type, bin_level, weight_kg } = req.body;
@@ -780,34 +770,23 @@ app.post('/api/esp32/sensors/update', async (req, res) => {
       fill_level: bin.fill_level,
       status:     bin.status
     });
-
   } catch (err) {
     console.error('❌ ESP32 sensor update error:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// ESP32 → Device health ping
 app.post('/api/esp32/device/health', async (req, res) => {
   try {
     const { device_id, battery_level, firmware_version, uptime_seconds, free_memory, wifi_strength } = req.body;
-
     console.log(`💓 ESP32 Health → ${device_id} | Battery: ${battery_level}% | Uptime: ${uptime_seconds}s | WiFi: ${wifi_strength}dBm`);
-
-    res.json({
-      success:   true,
-      message:   'Health received',
-      device_id: device_id,
-      timestamp: new Date().toISOString()
-    });
-
+    res.json({ success: true, message: 'Health received', device_id, timestamp: new Date().toISOString() });
   } catch (err) {
     console.error('❌ ESP32 health error:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// ESP32 → Record waste collection (triggered after PROCESS DONE)
 app.post('/api/esp32/collection/record', async (req, res) => {
   try {
     const { waste_type, weight_kg } = req.body;
@@ -819,7 +798,6 @@ app.post('/api/esp32/collection/record', async (req, res) => {
       return res.status(404).json({ success: false, error: `No bin found for type: ${mappedType}` });
     }
 
-    // Use admin as default staff for ESP32-triggered collections
     const staff = await User.findOne({ role: 'Administrator' });
     if (!staff) {
       return res.status(404).json({ success: false, error: 'No admin user found for staff_id' });
@@ -836,29 +814,37 @@ app.post('/api/esp32/collection/record', async (req, res) => {
     });
     await log.save();
 
-    // Reset bin after collection
-    await Bin.findByIdAndUpdate(bin._id, {
+    const updatedBin = await Bin.findByIdAndUpdate(bin._id, {
       fill_level:   0,
       weight_kg:    0,
       status:       'Active',
       last_updated: new Date()
+    }, { new: true });
+
+    const io = req.app.get('io');
+    io.emit('bin-updated', {
+      type: 'COLLECTION_RESET',
+      binId: updatedBin._id,
+      binName: updatedBin.bin_name,
+      bin: {
+        _id: updatedBin._id,
+        bin_name: updatedBin.bin_name,
+        bin_type: updatedBin.bin_type,
+        fillLevel: updatedBin.fill_level,
+        weight_kg: updatedBin.weight_kg,
+        status: updatedBin.status
+      },
+      timestamp: new Date()
     });
 
-    console.log(`🗑️  ESP32 Collection → ${mappedType} | ${weight_kg}kg`);
-
-    res.json({
-      success: true,
-      message: 'Collection recorded and bin reset',
-      log_id:  log._id
-    });
-
+    console.log(`🗑️ ESP32 Collection → ${mappedType} | ${weight_kg}kg`);
+    res.json({ success: true, message: 'Collection recorded and bin reset', log_id: log._id });
   } catch (err) {
     console.error('❌ ESP32 collection error:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// ESP32 → Log waste detection event (triggered immediately on detection)
 app.post('/api/esp32/events', async (req, res) => {
   try {
     const { waste_type, weight_kg, event_type, device_id } = req.body;
@@ -882,15 +868,48 @@ app.post('/api/esp32/events', async (req, res) => {
     });
     await event.save();
 
+    const newWeight = (bin.weight_kg || 0) + (weight_kg || 0);
+    const newFill = Math.min(100, bin.fill_level + (weight_kg || 0));
+    const updatedBin = await Bin.findByIdAndUpdate(
+      bin._id,
+      {
+        weight_kg:    newWeight,
+        fill_level:   newFill,
+        last_updated: new Date(),
+        status:       newFill >= 90 ? 'Full' : 'Active'
+      },
+      { new: true }
+    );
+
     console.log(`⚡ ESP32 Event → ${event_type} | ${mappedType} | ${weight_kg}kg`);
+    console.log(`   Bin ${updatedBin.bin_name} → weight: ${newWeight}kg, fill: ${newFill}%`);
+
+    const io = req.app.get('io');
+    io.emit('bin-updated', {
+      type: 'WEIGHT_UPDATE',
+      binId: updatedBin._id,
+      binName: updatedBin.bin_name,
+      bin: {
+        _id: updatedBin._id,
+        bin_name: updatedBin.bin_name,
+        bin_type: updatedBin.bin_type,
+        fillLevel: updatedBin.fill_level,
+        weight_kg: updatedBin.weight_kg,
+        status: updatedBin.status
+      },
+      timestamp: new Date()
+    });
 
     res.json({
       success:    true,
-      message:    'Event logged',
+      message:    'Event logged and bin updated',
       event_id:   event._id,
-      waste_type: mappedType
+      waste_type: mappedType,
+      bin: {
+        weight_kg: updatedBin.weight_kg,
+        fill_level: updatedBin.fill_level
+      }
     });
-
   } catch (err) {
     console.error('❌ ESP32 event error:', err);
     res.status(500).json({ success: false, error: err.message });
@@ -898,7 +917,49 @@ app.post('/api/esp32/events', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
-// 17. SEED DATA
+// 17. SETTINGS UPDATE (with validation)
+// ─────────────────────────────────────────────────────────────
+app.put('/api/settings', auth, adminOnly, async (req, res) => {
+  try {
+    const updates = req.body;
+
+    // Validate threshold order if any of them are provided
+    const newNear = updates.nearFullThreshold;
+    const newFull = updates.fullThreshold;
+    const newOver = updates.overflowThreshold;
+
+    if ((newNear !== undefined || newFull !== undefined || newOver !== undefined)) {
+      let settings = await Settings.findOne();
+      if (!settings) settings = new Settings();
+      const finalNear = newNear !== undefined ? newNear : settings.nearFullThreshold;
+      const finalFull = newFull !== undefined ? newFull : settings.fullThreshold;
+      const finalOver = newOver !== undefined ? newOver : settings.overflowThreshold;
+
+      if (!(finalNear < finalFull && finalFull < finalOver)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Thresholds must be in order: Near‑Full < Full < Overflow'
+        });
+      }
+    }
+
+    let settings = await Settings.findOne();
+    if (!settings) {
+      settings = new Settings(updates);
+    } else {
+      Object.assign(settings, updates);
+      settings.updatedAt = new Date();
+    }
+    await settings.save();
+
+    res.json({ success: true, settings });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// 18. SEED DATA
 // ─────────────────────────────────────────────────────────────
 async function seedData() {
   if (await User.countDocuments() === 0) {
@@ -918,7 +979,7 @@ async function seedData() {
       { bin_name: 'Non-Bio Bin A', location: 'Building A', bin_type: 'Non-Biodegradable', fill_level: 0, status: 'Active' },
       { bin_name: 'Recycle Bin A', location: 'Building A', bin_type: 'Recyclable',         fill_level: 0, status: 'Active' }
     ]);
-    console.log('✅ Bins seeded (3 bins: Bio, Non-Bio, Recycle)');
+    console.log('✅ Bins seeded (3 bins)');
   }
 
   if (await ChargingPort.countDocuments() === 0) {
@@ -929,11 +990,10 @@ async function seedData() {
     console.log('✅ Charging ports seeded');
   }
 }
-
 seedData();
 
 // ─────────────────────────────────────────────────────────────
-// 18. START SERVER
+// 19. START SERVER
 // ─────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
