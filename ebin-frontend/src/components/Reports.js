@@ -15,10 +15,13 @@ const PERIODS = [
 ];
 
 const COLORS = {
-  recyclable:        '#1D9E75',   // green
-  biodegradable:     '#F59E0B',   // orange
-  nonBiodegradable:  '#E24B4A',   // red
+  recyclable:        '#1D9E75',
+  biodegradable:     '#F59E0B',
+  nonBiodegradable:  '#E24B4A',
 };
+
+// Round a number to 2 decimal places (avoids floating-point blowup)
+const r2 = (n) => Math.round(n * 100) / 100;
 
 // Helper: group waste events by date range
 const aggregateByPeriod = (events, period) => {
@@ -41,7 +44,7 @@ const aggregateByPeriod = (events, period) => {
       startOfWeek.setHours(0, 0, 0, 0);
       key = startOfWeek.toISOString().split('T')[0];
       label = `Week of ${key}`;
-    } else { // monthly
+    } else {
       key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
       label = `${date.toLocaleString('default', { month: 'long' })} ${date.getFullYear()}`;
     }
@@ -51,28 +54,26 @@ const aggregateByPeriod = (events, period) => {
     }
 
     const group = groups.get(key);
-    const weight = event.weight_kg || 0;
+    const weight = r2(event.weight_kg || 0);   // ← round incoming weight
 
     switch (event.waste_type) {
       case 'Recyclable':
-        group.recyclable += weight;
+        group.recyclable = r2(group.recyclable + weight);
         break;
       case 'Biodegradable':
-        group.biodegradable += weight;
+        group.biodegradable = r2(group.biodegradable + weight);
         break;
       case 'Non-Biodegradable':
-        group.nonBiodegradable += weight;
+        group.nonBiodegradable = r2(group.nonBiodegradable + weight);
         break;
       default:
-        group.nonBiodegradable += weight;
+        group.nonBiodegradable = r2(group.nonBiodegradable + weight);
     }
   });
 
-  // Sort by date (oldest first)
   const sorted = Array.from(groups.values()).sort((a, b) => {
     if (period === 'daily') return a.label.localeCompare(b.label);
     if (period === 'weekly') return a.label.localeCompare(b.label);
-    // monthly: extract year and month
     const getDate = (label) => {
       const parts = label.split(' ');
       const month = parts[0];
@@ -106,18 +107,16 @@ const Reports = () => {
   const [period, setPeriod] = useState('weekly');
   const [chartType, setChartType] = useState('line');
 
-  // Compute aggregated data based on selected period
   const periodData = useMemo(() => {
     if (!wasteEvents.length) return [];
     return aggregateByPeriod(wasteEvents, period);
   }, [wasteEvents, period]);
 
-  // Calculate totals (no rate needed)
   const totals = useMemo(() => {
-    const rec = periodData.reduce((sum, d) => sum + d.recyclable, 0);
-    const bio = periodData.reduce((sum, d) => sum + d.biodegradable, 0);
-    const nonBio = periodData.reduce((sum, d) => sum + d.nonBiodegradable, 0);
-    const total = rec + bio + nonBio;
+    const rec    = r2(periodData.reduce((sum, d) => sum + d.recyclable, 0));
+    const bio    = r2(periodData.reduce((sum, d) => sum + d.biodegradable, 0));
+    const nonBio = r2(periodData.reduce((sum, d) => sum + d.nonBiodegradable, 0));
+    const total  = r2(rec + bio + nonBio);
     return { rec, bio, nonBio, total };
   }, [periodData]);
 
@@ -125,7 +124,7 @@ const Reports = () => {
     const headers = ['Period', 'Recyclable (kg)', 'Biodegradable (kg)', 'Non-Biodegradable (kg)', 'Total (kg)'];
     const rows = periodData.map((r) => [
       r.label, r.recyclable, r.biodegradable, r.nonBiodegradable,
-      r.recyclable + r.biodegradable + r.nonBiodegradable,
+      r2(r.recyclable + r.biodegradable + r.nonBiodegradable),
     ]);
     const summary = ['', '', '', 'TOTAL', totals.total];
     const csv = [headers, ...rows, summary].map((r) => r.join(',')).join('\n');
@@ -187,7 +186,7 @@ const Reports = () => {
         <button className="rp-export-btn" onClick={handleExport}>↓ Export CSV</button>
       </div>
 
-      {/* Summary metrics – percentages removed */}
+      {/* Summary metrics */}
       <div className="rp-metrics">
         {[
           {
@@ -196,21 +195,9 @@ const Reports = () => {
             sub: period === 'daily' ? 'Today' : period === 'weekly' ? 'This week' : 'This month',
             color: '#1a1a1a',
           },
-          {
-            label: 'Recyclable',
-            value: `${totals.rec} kg`,
-            color: COLORS.recyclable,
-          },
-          {
-            label: 'Biodegradable',
-            value: `${totals.bio} kg`,
-            color: COLORS.biodegradable,
-          },
-          {
-            label: 'Non-Biodegradable',
-            value: `${totals.nonBio} kg`,
-            color: COLORS.nonBiodegradable,
-          },
+          { label: 'Recyclable',        value: `${totals.rec} kg`,    color: COLORS.recyclable        },
+          { label: 'Biodegradable',     value: `${totals.bio} kg`,    color: COLORS.biodegradable     },
+          { label: 'Non-Biodegradable', value: `${totals.nonBio} kg`, color: COLORS.nonBiodegradable  },
         ].map((m) => (
           <div key={m.label} className="rp-metric">
             <p className="rp-metric-label">{m.label}</p>
@@ -261,8 +248,8 @@ const Reports = () => {
                 <YAxis {...sharedAxisProps} unit=" kg" />
                 <Tooltip content={<CustomTooltip />} />
                 <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, paddingTop: 12 }} />
-                <Line type="monotone" dataKey="recyclable" name="Recyclable" stroke={COLORS.recyclable} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-                <Line type="monotone" dataKey="biodegradable" name="Biodegradable" stroke={COLORS.biodegradable} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                <Line type="monotone" dataKey="recyclable"       name="Recyclable"        stroke={COLORS.recyclable}       strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                <Line type="monotone" dataKey="biodegradable"    name="Biodegradable"     stroke={COLORS.biodegradable}    strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
                 <Line type="monotone" dataKey="nonBiodegradable" name="Non-Biodegradable" stroke={COLORS.nonBiodegradable} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
               </LineChart>
             ) : (
@@ -272,8 +259,8 @@ const Reports = () => {
                 <YAxis {...sharedAxisProps} unit=" kg" />
                 <Tooltip content={<CustomTooltip />} />
                 <Legend iconType="square" iconSize={8} wrapperStyle={{ fontSize: 12, paddingTop: 12 }} />
-                <Bar dataKey="recyclable" name="Recyclable" fill={COLORS.recyclable} radius={[4, 4, 0, 0]} />
-                <Bar dataKey="biodegradable" name="Biodegradable" fill={COLORS.biodegradable} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="recyclable"       name="Recyclable"        fill={COLORS.recyclable}       radius={[4, 4, 0, 0]} />
+                <Bar dataKey="biodegradable"    name="Biodegradable"     fill={COLORS.biodegradable}    radius={[4, 4, 0, 0]} />
                 <Bar dataKey="nonBiodegradable" name="Non-Biodegradable" fill={COLORS.nonBiodegradable} radius={[4, 4, 0, 0]} />
               </BarChart>
             )}
@@ -281,7 +268,7 @@ const Reports = () => {
         )}
       </div>
 
-      {/* Breakdown table – without recycling rate column */}
+      {/* Breakdown table */}
       <div className="rp-card">
         <p className="rp-card-title">Collection breakdown</p>
         <div className="rp-table-wrap">
@@ -300,7 +287,7 @@ const Reports = () => {
                 <tr><td colSpan="5" className="rp-empty">No data for this period.</td></tr>
               ) : (
                 periodData.map((row) => {
-                  const rowTotal = row.recyclable + row.biodegradable + row.nonBiodegradable;
+                  const rowTotal = r2(row.recyclable + row.biodegradable + row.nonBiodegradable);
                   return (
                     <tr key={row.label}>
                       <td className="rp-muted">{row.label}</td>
