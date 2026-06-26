@@ -1,4 +1,4 @@
-// DashboardOverview.js — uses shared EbinContext
+// DashboardOverview.js — fixed weekly trend (local date, no timezone issues)
 import React, { useMemo } from 'react';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis,
@@ -14,7 +14,6 @@ const COLORS = {
   maint:    '#6b7280',
 };
 
-// Derives status label from fill level number
 const getBinStatus = (fillLevel) => {
   if (fillLevel >= 90) return 'Full';
   if (fillLevel >= 75) return 'Near Full';
@@ -34,7 +33,6 @@ const getFillBarColor = (fill) => {
   return COLORS.active;
 };
 
-// Fill level label — CRITICAL / HIGH / MEDIUM / LOW
 const getFillLabel = (fill) => {
   if (fill >= 90) return { text: 'CRITICAL', color: COLORS.full };
   if (fill >= 75) return { text: 'HIGH',     color: COLORS.nearFull };
@@ -52,26 +50,52 @@ const CustomAreaTooltip = ({ active, payload, label }) => {
   );
 };
 
+// Helper: get weekday name (Mon, Tue, ...) from a date string "YYYY-MM-DD" in local time
+const getWeekdayFromDateString = (dateStr) => {
+  // dateStr format: "2026-05-28"
+  const [year, month, day] = dateStr.split('-').map(Number);
+  // Use local date (months are 0-indexed in JS)
+  const date = new Date(year, month - 1, day);
+  const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  return weekdays[date.getDay()];
+};
+
 const DashboardOverview = () => {
-  // ✅ removed errorBins — was unused
   const { bins, wasteEvents, stats, loadingBins, refreshAll, lastSync } = useEbin();
 
-  // Build last-7-days waste trend from real waste events
+  // Trend: last 7 days based on actual waste events, grouped by weekday (local date)
   const trend = useMemo(() => {
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const map = { Sun: 0, Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0 };
+    // Initialize map for Monday to Sunday
+    const dayOrder = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const weightMap = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0 };
 
-    wasteEvents.forEach(e => {
-      const d = new Date(e.time);
-      const dayLabel = days[d.getDay()];
-      map[dayLabel] = parseFloat((map[dayLabel] + e.weight_kg).toFixed(2));
+    wasteEvents.forEach(event => {
+      // Extract date part from time string (e.g., "2026-05-28 07:33:33" -> "2026-05-28")
+      const timeStr = event.time || event.detected_at;
+      if (!timeStr) return;
+      const datePart = timeStr.split(' ')[0]; // "YYYY-MM-DD"
+      const weekday = getWeekdayFromDateString(datePart);
+      const weight = event.weight_kg ?? 0;
+      if (weightMap.hasOwnProperty(weekday)) {
+        weightMap[weekday] += weight;
+      }
     });
 
-    return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => ({
-      day,
-      kg: map[day],
-    }));
+    // Round to 2 decimals
+    Object.keys(weightMap).forEach(day => {
+      weightMap[day] = parseFloat(weightMap[day].toFixed(2));
+    });
+
+    // Return array in Monday–Sunday order
+    return dayOrder.map(day => ({ day, kg: weightMap[day] }));
   }, [wasteEvents]);
+
+  // Compute priority bins directly (fillLevel >= 75)
+  const priorityBins = useMemo(() => {
+    return [...bins]
+      .filter(b => (b.fillLevel ?? 0) >= 75)
+      .sort((a, b) => (b.fillLevel ?? 0) - (a.fillLevel ?? 0));
+  }, [bins]);
 
   if (loadingBins && bins.length === 0) {
     return (
@@ -90,7 +114,6 @@ const DashboardOverview = () => {
 
   return (
     <div className="do-container">
-
       {lastSync && (
         <div className="do-sync-info">
           <span className="do-sync-label">Last sync:</span>
@@ -105,7 +128,7 @@ const DashboardOverview = () => {
         </div>
       )}
 
-      {/* ── Summary cards ── */}
+      {/* Summary cards */}
       <div className="do-summary-row">
         <div className="do-summary-card">
           <span className="do-summary-number">{stats.totalBins}</span>
@@ -129,9 +152,9 @@ const DashboardOverview = () => {
         </div>
       </div>
 
-      {/* ── Waste trend ── */}
+      {/* Weekly trend chart - fixed local date grouping */}
       <div className="do-card do-card-full">
-        <p className="do-card-title">Waste trend — last 7 days</p>
+        <p className="do-card-title">Weekly waste trend (based on actual waste events)</p>
         <ResponsiveContainer width="100%" height={200}>
           <AreaChart data={trend} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
             <defs>
@@ -155,72 +178,37 @@ const DashboardOverview = () => {
             />
           </AreaChart>
         </ResponsiveContainer>
+        <p className="do-note" style={{ fontSize: 12, color: '#6b7280', marginTop: 8 }}>
+          💡 Aggregates waste weight by day of week (Monday–Sunday) using the local date from each waste event.
+        </p>
       </div>
 
-      {/* ── Priority bins ── */}
+      {/* Priority bins section */}
       <div className="do-card do-card-full">
         <div className="do-card-header">
           <p className="do-card-title" style={{ margin: 0 }}>Priority bins</p>
-          {stats.priorityBins.length > 0
-            ? <span className="do-badge do-badge-warn">{stats.priorityBins.length} need attention</span>
+          {priorityBins.length > 0
+            ? <span className="do-badge do-badge-warn">{priorityBins.length} need attention</span>
             : <span className="do-badge do-badge-ok">All bins normal</span>
           }
         </div>
 
         {bins.length === 0 ? (
           <div className="do-all-ok"><p>No bins data available</p></div>
-
-        ) : stats.priorityBins.length === 0 ? (
-          // Show all bins with their fill level labels even when none are priority
+        ) : (
           <div className="do-all-ok">
-            <span className="do-ok-icon">✓</span>
-            <p>No bins require immediate collection (threshold: 75%)</p>
-            {bins.map((bin, idx) => {
+            {priorityBins.length === 0 && <span className="do-ok-icon">✓</span>}
+            <p>
+              {priorityBins.length === 0
+                ? 'No bins require immediate collection (threshold: 75%)'
+                : 'Bins that need attention:'}
+            </p>
+            {(priorityBins.length > 0 ? priorityBins : bins).map((bin, idx) => {
               const fill = bin.fillLevel ?? 0;
               const fillLabel = getFillLabel(fill);
-              return (
-                <div key={idx} className="do-priority-row" style={{ marginTop: '10px' }}>
-                  <div className="do-priority-left">
-                    <span className="do-priority-dot" style={{ background: getFillBarColor(fill) }} />
-                    <span className="do-priority-name">{bin.bin_name}</span>
-                    <span className="do-priority-type">{bin.bin_type}</span>
-                  </div>
-                  <div className="do-priority-center">
-                    <div className="do-fill-bar-bg">
-                      <div
-                        className="do-fill-bar-fill"
-                        style={{ width: `${fill}%`, background: getFillBarColor(fill) }}
-                      />
-                    </div>
-                  </div>
-                  <div className="do-priority-right">
-                    <span className="do-fill-pct">{fill}%</span>
-                    {/* ✅ Fill label badge */}
-                    <span
-                      className="do-status-tag"
-                      style={{
-                        background: `${fillLabel.color}18`,
-                        color: fillLabel.color,
-                        border: `1px solid ${fillLabel.color}40`,
-                      }}
-                    >
-                      {fillLabel.text}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-        ) : (
-          // Priority bins list with fill labels
-          <div className="do-priority-list">
-            {stats.priorityBins.map((bin, i) => {
-              const fill   = bin.fillLevel ?? 0;
               const status = bin.status || getBinStatus(fill);
-              const fillLabel = getFillLabel(fill);
               return (
-                <div key={bin._id ?? i} className="do-priority-row">
+                <div key={bin._id || idx} className="do-priority-row" style={{ marginTop: '10px' }}>
                   <div className="do-priority-left">
                     <span className="do-priority-dot" style={{ background: getFillBarColor(fill) }} />
                     <span className="do-priority-name">{bin.bin_name}</span>
@@ -236,7 +224,6 @@ const DashboardOverview = () => {
                   </div>
                   <div className="do-priority-right">
                     <span className="do-fill-pct">{fill}%</span>
-                    {/* ✅ Shows both status (Full/Near Full) AND fill label (CRITICAL/HIGH) */}
                     <span
                       className="do-status-tag"
                       style={{
@@ -265,7 +252,6 @@ const DashboardOverview = () => {
           </div>
         )}
       </div>
-
     </div>
   );
 };

@@ -1,4 +1,4 @@
-// Reports.js
+// Reports.js – fully corrected JSX
 import React, { useState, useMemo } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
@@ -7,7 +7,7 @@ import {
 import './Report.css';
 import { useEbin } from '../EbinContext';
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ─── Constants ──────────────────────────────────────────────
 const PERIODS = [
   { key: 'daily',   label: 'Daily'   },
   { key: 'weekly',  label: 'Weekly'  },
@@ -20,10 +20,9 @@ const COLORS = {
   nonBiodegradable:  '#E24B4A',
 };
 
-// Round a number to 2 decimal places (avoids floating-point blowup)
 const r2 = (n) => Math.round(n * 100) / 100;
 
-// Helper: group waste events by date range
+// Group events by period – fixed to use event.type
 const aggregateByPeriod = (events, period) => {
   if (!events.length) return [];
 
@@ -54,9 +53,9 @@ const aggregateByPeriod = (events, period) => {
     }
 
     const group = groups.get(key);
-    const weight = r2(event.weight_kg || 0);   // ← round incoming weight
+    const weight = r2(event.weight_kg || 0);
 
-    switch (event.waste_type) {
+    switch (event.type) {
       case 'Recyclable':
         group.recyclable = r2(group.recyclable + weight);
         break;
@@ -86,7 +85,6 @@ const aggregateByPeriod = (events, period) => {
   return sorted;
 };
 
-// ─── Custom Tooltip ──────────────────────────────────────────────────────────
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
@@ -101,9 +99,8 @@ const CustomTooltip = ({ active, payload, label }) => {
   );
 };
 
-// ─── Main Component ──────────────────────────────────────────────────────────
 const Reports = () => {
-  const { wasteEvents, loadingEvents, errorEvents } = useEbin();
+  const { wasteEvents, loadingEvents, errorEvents, refreshAll, lastSync } = useEbin();
   const [period, setPeriod] = useState('weekly');
   const [chartType, setChartType] = useState('line');
 
@@ -148,9 +145,7 @@ const Reports = () => {
     margin: { top: 4, right: 8, left: -16, bottom: 0 },
   };
 
-  const periodLabel =
-    period === 'daily' ? "Today's" :
-    period === 'weekly' ? 'Weekly' : 'Monthly';
+  const periodLabel = period === 'daily' ? "Today's" : period === 'weekly' ? 'Weekly' : 'Monthly';
 
   if (loadingEvents && wasteEvents.length === 0) {
     return (
@@ -169,7 +164,7 @@ const Reports = () => {
         <div className="error-state">
           <div className="error-icon">⚠️</div>
           <p>{errorEvents}</p>
-          <button onClick={() => window.location.reload()} className="retry-button">Retry</button>
+          <button onClick={refreshAll} className="retry-button">Retry</button>
         </div>
       </div>
     );
@@ -177,27 +172,32 @@ const Reports = () => {
 
   return (
     <div className="rp-page">
-
       {/* Header */}
       <div className="rp-header">
         <div>
           <h2 className="rp-title">Waste Management Reports</h2>
+          {wasteEvents.length === 0 && !errorEvents && (
+            <p className="rp-info-note">No waste events found in database.</p>
+          )}
+          {wasteEvents.length > 0 && (
+            <p className="rp-success-note">
+              ✅ {wasteEvents.length} waste events loaded · Last sync: {lastSync}
+            </p>
+          )}
         </div>
-        <button className="rp-export-btn" onClick={handleExport}>↓ Export CSV</button>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button className="rp-export-btn" onClick={handleExport}>↓ Export CSV</button>
+          <button className="rp-refresh-btn" onClick={refreshAll} title="Refresh data">🔄 Refresh</button>
+        </div>
       </div>
 
-      {/* Summary metrics */}
+      {/* Metrics */}
       <div className="rp-metrics">
         {[
-          {
-            label: 'Total waste collected',
-            value: `${totals.total} kg`,
-            sub: period === 'daily' ? 'Today' : period === 'weekly' ? 'This week' : 'This month',
-            color: '#1a1a1a',
-          },
-          { label: 'Recyclable',        value: `${totals.rec} kg`,    color: COLORS.recyclable        },
-          { label: 'Biodegradable',     value: `${totals.bio} kg`,    color: COLORS.biodegradable     },
-          { label: 'Non-Biodegradable', value: `${totals.nonBio} kg`, color: COLORS.nonBiodegradable  },
+          { label: 'Total waste collected', value: `${totals.total} kg`, sub: period === 'daily' ? 'Today' : period === 'weekly' ? 'This week' : 'This month', color: '#1a1a1a' },
+          { label: 'Recyclable', value: `${totals.rec} kg`, color: COLORS.recyclable },
+          { label: 'Biodegradable', value: `${totals.bio} kg`, color: COLORS.biodegradable },
+          { label: 'Non-Biodegradable', value: `${totals.nonBio} kg`, color: COLORS.nonBiodegradable },
         ].map((m) => (
           <div key={m.label} className="rp-metric">
             <p className="rp-metric-label">{m.label}</p>
@@ -207,36 +207,27 @@ const Reports = () => {
         ))}
       </div>
 
-      {/* Chart card */}
+      {/* Chart */}
       <div className="rp-card">
         <div className="rp-card-toolbar">
           <p className="rp-card-title">{periodLabel} waste trend</p>
           <div className="rp-controls">
             <div className="rp-seg">
               {PERIODS.map((p) => (
-                <button
-                  key={p.key}
-                  className={`rp-seg-btn ${period === p.key ? 'rp-seg-active' : ''}`}
-                  onClick={() => setPeriod(p.key)}
-                >
+                <button key={p.key} className={`rp-seg-btn ${period === p.key ? 'rp-seg-active' : ''}`} onClick={() => setPeriod(p.key)}>
                   {p.label}
                 </button>
               ))}
             </div>
             <div className="rp-seg">
               {['line', 'bar'].map((type) => (
-                <button
-                  key={type}
-                  className={`rp-seg-btn ${chartType === type ? 'rp-seg-active' : ''}`}
-                  onClick={() => setChartType(type)}
-                >
+                <button key={type} className={`rp-seg-btn ${chartType === type ? 'rp-seg-active' : ''}`} onClick={() => setChartType(type)}>
                   {type.charAt(0).toUpperCase() + type.slice(1)}
                 </button>
               ))}
             </div>
           </div>
         </div>
-
         {periodData.length === 0 ? (
           <p className="rp-empty">No waste events found for this period.</p>
         ) : (
@@ -248,8 +239,8 @@ const Reports = () => {
                 <YAxis {...sharedAxisProps} unit=" kg" />
                 <Tooltip content={<CustomTooltip />} />
                 <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, paddingTop: 12 }} />
-                <Line type="monotone" dataKey="recyclable"       name="Recyclable"        stroke={COLORS.recyclable}       strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-                <Line type="monotone" dataKey="biodegradable"    name="Biodegradable"     stroke={COLORS.biodegradable}    strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                <Line type="monotone" dataKey="recyclable" name="Recyclable" stroke={COLORS.recyclable} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                <Line type="monotone" dataKey="biodegradable" name="Biodegradable" stroke={COLORS.biodegradable} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
                 <Line type="monotone" dataKey="nonBiodegradable" name="Non-Biodegradable" stroke={COLORS.nonBiodegradable} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
               </LineChart>
             ) : (
@@ -259,8 +250,8 @@ const Reports = () => {
                 <YAxis {...sharedAxisProps} unit=" kg" />
                 <Tooltip content={<CustomTooltip />} />
                 <Legend iconType="square" iconSize={8} wrapperStyle={{ fontSize: 12, paddingTop: 12 }} />
-                <Bar dataKey="recyclable"       name="Recyclable"        fill={COLORS.recyclable}       radius={[4, 4, 0, 0]} />
-                <Bar dataKey="biodegradable"    name="Biodegradable"     fill={COLORS.biodegradable}    radius={[4, 4, 0, 0]} />
+                <Bar dataKey="recyclable" name="Recyclable" fill={COLORS.recyclable} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="biodegradable" name="Biodegradable" fill={COLORS.biodegradable} radius={[4, 4, 0, 0]} />
                 <Bar dataKey="nonBiodegradable" name="Non-Biodegradable" fill={COLORS.nonBiodegradable} radius={[4, 4, 0, 0]} />
               </BarChart>
             )}
@@ -284,7 +275,9 @@ const Reports = () => {
             </thead>
             <tbody>
               {periodData.length === 0 ? (
-                <tr><td colSpan="5" className="rp-empty">No data for this period.</td></tr>
+                <tr>
+                  <td colSpan="5" className="rp-empty">No data for this period.</td>
+                </tr>
               ) : (
                 periodData.map((row) => {
                   const rowTotal = r2(row.recyclable + row.biodegradable + row.nonBiodegradable);
@@ -313,6 +306,10 @@ const Reports = () => {
             )}
           </table>
         </div>
+        <p className="rp-note">
+          💡 Data updates in real‑time. Click <strong>Refresh</strong> to load the latest waste events.
+          Totals are calculated directly from waste events (same as Waste Segregation).
+        </p>
       </div>
     </div>
   );

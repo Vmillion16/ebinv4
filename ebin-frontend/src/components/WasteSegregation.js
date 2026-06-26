@@ -5,6 +5,15 @@ import { useEbin } from '../EbinContext';
 
 const WASTE_TYPES = ["Recyclable", "Biodegradable", "Non-Biodegradable"];
 
+const formatTime = (iso) => {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d)) return iso; // fallback if already formatted
+  const date = d.toISOString().slice(0, 10);   // "2026-06-02"
+  const time = d.toISOString().slice(11, 19);  // "08:54:40"
+  return `${date}  ${time}`;
+};
+
 const TypeBadge = ({ type }) => {
   const cls =
     type === "Recyclable"          ? "badge-recyclable" :
@@ -125,7 +134,6 @@ const WasteSegregation = () => {
                 <th>Time</th>
                 <th>Bin</th>
                 <th>Waste Type</th>
-                <th>Item Detected</th>
                 <th>Weight</th>
                 <th>Result</th>
               </tr>
@@ -133,7 +141,7 @@ const WasteSegregation = () => {
             <tbody>
               {filtered.length === 0 && wasteEvents.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="ws-empty">
+                  <td colSpan={5} className="ws-empty">
                     <div className="empty-state">
                       <div className="empty-icon">🗑️</div>
                       <p>No waste events found</p>
@@ -143,15 +151,14 @@ const WasteSegregation = () => {
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="ws-empty">No events match the selected filter.</td>
+                  <td colSpan={5} className="ws-empty">No events match the selected filter.</td>
                 </tr>
               ) : (
                 filtered.map(row => (
                   <tr key={row.id}>
-                    <td className="ws-muted ws-mono">{row.time}</td>
+                    <td className="ws-muted ws-mono">{formatTime(row.time)}</td>
                     <td style={{ fontWeight: 500 }}>{row.bin}</td>
                     <td><TypeBadge type={row.type} /></td>
-                    <td className="ws-muted">{row.item}</td>
                     <td className="ws-muted">{row.weight}</td>
                     <td><ResultBadge result={row.result} /></td>
                   </tr>
