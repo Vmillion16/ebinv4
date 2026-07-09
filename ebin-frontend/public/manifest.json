@@ -1,11 +1,6 @@
 {
-<<<<<<< HEAD
   "short_name": "E-BIN",
   "name": "E-BIN Website",
-=======
-  "short_name": "React App",
-  "name": "Create React App Sample",
->>>>>>> 600b0a2610eb359049ef4caf5d18075c13b31af8
   "icons": [
     {
       "src": "favicon.ico",

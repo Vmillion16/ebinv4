@@ -7,9 +7,6 @@ import { io } from 'socket.io-client';
 const BASE_URL   = "https://ebinv4-1.onrender.com";
 const SENSOR_URL = `${BASE_URL}/api/esp32/sensors/update`;
 
-// Maximum weight (in kg) a bin can hold – adjust to your physical bin capacity
-const MAX_WEIGHT_KG = 100;
-
 const socket = io(BASE_URL, {
   transports: ['websocket', 'polling'],
   reconnection: true,
@@ -74,9 +71,16 @@ const EmptyConfirmModal = ({ bin, onConfirm, onCancel, loading }) => (
   </div>
 );
 
-// ── Individual bin row (fill level & weight from waste events) ──
+// ── Individual bin row (fill level = item-count based, from bin.fill_level) ──
 const BinRow = ({ bin, totalWeight, thresholds, onEmptyClick }) => {
-  const fillPct = Math.min(Math.round((totalWeight / MAX_WEIGHT_KG) * 100), 100);
+  // Item-count based fill. This mirrors exactly what the Raspberry Pi computes:
+  // FILL_INCREMENT (+10%) per confirmed detection, capped at 100, persisted to
+  // fill_levels.json and posted to /api/esp32/sensors/update as "bin_level".
+  // The dashboard bins endpoint returns that same value back as fill_level / fillLevel.
+  const fillPct = Math.min(
+    Math.max(Math.round(bin.fill_level ?? bin.fillLevel ?? 0), 0),
+    100
+  );
   const typeColor = getTypeColor(bin.bin_type);
   const isFull = fillPct >= thresholds.full;
 
@@ -131,7 +135,7 @@ const BinRow = ({ bin, totalWeight, thresholds, onEmptyClick }) => {
   );
 };
 
-// ── Stats cards – now uses stats.totalEventsWeight directly (same as WasteSegregation) ──
+// ── Stats cards – uses stats.totalEventsWeight directly (same as WasteSegregation) ──
 const StatsCard = ({ bins, stats }) => (
   <div className="stats-grid">
     <div className="stat-card">
@@ -177,7 +181,7 @@ const BinMonitoring = () => {
     overflow: 95,
   });
 
-  // ── Compute total weight per bin directly from wasteEvents (independent of bins list) ──
+  // ── Compute total weight per bin directly from wasteEvents (display only — no longer drives fill %) ──
   const totalWeightPerBin = useMemo(() => {
     const map = new Map();
     wasteEvents.forEach(event => {
@@ -370,9 +374,9 @@ const BinMonitoring = () => {
         </div>
 
         <p className="table-note">
-          💡 Bin fill levels and weights are calculated directly from <strong>waste events</strong> (same data as Waste Segregation).<br />
-          Total waste weight now matches the Waste Segregation page exactly.<br />
-          🗑️ Press <strong>"Delete History & Empty"</strong> to permanently delete all waste records and reset the bin to 0 kg.
+          💡 Bin fill levels are item-count based (each detection ≈ +10%, matching the Pi's{' '}
+          <code>FILL_INCREMENT</code>). Weight is shown separately from waste events.<br />
+          🗑️ Press <strong>"Delete History & Empty"</strong> to permanently delete all waste records and reset the bin to 0%.
         </p>
       </div>
     </div>
