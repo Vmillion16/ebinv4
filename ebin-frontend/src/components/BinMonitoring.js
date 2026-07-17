@@ -7,6 +7,10 @@ import { io } from 'socket.io-client';
 const BASE_URL   = "https://ebinv4-1.onrender.com";
 const SENSOR_URL = `${BASE_URL}/api/esp32/sensors/update`;
 
+// Physical bin capacity: 10kg / 100 liters. Fill level is now derived directly
+// from the actual accumulated waste weight (kg) for that bin, not item count.
+const MAX_BIN_CAPACITY_KG = 10;
+
 const socket = io(BASE_URL, {
   transports: ['websocket', 'polling'],
   reconnection: true,
@@ -44,6 +48,13 @@ const getBinTypeKey = (type) => {
   return 'non_biodegradable';
 };
 
+// Convert accumulated waste weight (kg) into a fill percentage against the
+// bin's physical capacity (10kg / 100L). Clamped to [0, 100].
+const computeFillPctFromWeight = (weightKg) => {
+  const pct = (weightKg / MAX_BIN_CAPACITY_KG) * 100;
+  return Math.min(Math.max(Math.round(pct), 0), 100);
+};
+
 // ── Empty Bin confirmation modal ──────────────────────────────
 const EmptyConfirmModal = ({ bin, onConfirm, onCancel, loading }) => (
   <div className="modal-overlay">
@@ -71,16 +82,13 @@ const EmptyConfirmModal = ({ bin, onConfirm, onCancel, loading }) => (
   </div>
 );
 
-// ── Individual bin row (fill level = item-count based, from bin.fill_level) ──
+// ── Individual bin row (fill level = weight based, capacity is 10kg / 100L) ──
 const BinRow = ({ bin, totalWeight, thresholds, onEmptyClick }) => {
-  // Item-count based fill. This mirrors exactly what the Raspberry Pi computes:
-  // FILL_INCREMENT (+10%) per confirmed detection, capped at 100, persisted to
-  // fill_levels.json and posted to /api/esp32/sensors/update as "bin_level".
-  // The dashboard bins endpoint returns that same value back as fill_level / fillLevel.
-  const fillPct = Math.min(
-    Math.max(Math.round(bin.fill_level ?? bin.fillLevel ?? 0), 0),
-    100
-  );
+  // Fill percentage is now computed from the bin's actual accumulated waste
+  // weight (kg), scaled against the physical capacity of 10kg (≈100 liters).
+  // This replaces the old item-count based estimate (+10% per detection),
+  // which drifted from reality whenever items had very different weights.
+  const fillPct = computeFillPctFromWeight(totalWeight);
   const typeColor = getTypeColor(bin.bin_type);
   const isFull = fillPct >= thresholds.full;
 
@@ -181,7 +189,9 @@ const BinMonitoring = () => {
     overflow: 95,
   });
 
-  // ── Compute total weight per bin directly from wasteEvents (display only — no longer drives fill %) ──
+  // ── Compute total weight per bin directly from wasteEvents — this now
+  // drives the fill % as well as the displayed weight, since fill level is
+  // weight-based against the 10kg / 100L physical capacity. ──
   const totalWeightPerBin = useMemo(() => {
     const map = new Map();
     wasteEvents.forEach(event => {
@@ -374,8 +384,8 @@ const BinMonitoring = () => {
         </div>
 
         <p className="table-note">
-          💡 Bin fill levels are item-count based (each detection ≈ +10%, matching the Pi's{' '}
-          <code>FILL_INCREMENT</code>). Weight is shown separately from waste events.<br />
+          💡 Fill levels are weight-based: each bin holds up to <strong>{MAX_BIN_CAPACITY_KG}kg (≈100 liters)</strong>,
+          and the percentage shown is the bin's accumulated waste weight divided by that capacity.<br />
           🗑️ Press <strong>"Delete History & Empty"</strong> to permanently delete all waste records and reset the bin to 0%.
         </p>
       </div>

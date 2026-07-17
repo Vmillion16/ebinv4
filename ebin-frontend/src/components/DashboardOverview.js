@@ -1,4 +1,4 @@
-// DashboardOverview.js — fixed weekly trend (local date, no timezone issues)
+// DashboardOverview.js — fixed weekly trend (matches real wasteEvent fields: `time`, `weight`)
 import React, { useMemo } from 'react';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis,
@@ -50,14 +50,29 @@ const CustomAreaTooltip = ({ active, payload, label }) => {
   );
 };
 
-// Helper: get weekday name (Mon, Tue, ...) from a date string "YYYY-MM-DD" in local time
-const getWeekdayFromDateString = (dateStr) => {
-  // dateStr format: "2026-05-28"
-  const [year, month, day] = dateStr.split('-').map(Number);
-  // Use local date (months are 0-indexed in JS)
-  const date = new Date(year, month - 1, day);
+// Helper: get weekday name (Mon, Tue, ...) from a waste event's `time` value.
+// WasteSegregation.js shows `row.time` is a raw date/ISO value that gets fed
+// straight into `new Date(iso)` (see formatTime there) — it is NOT a
+// pre-formatted "YYYY-MM-DD HH:MM:SS" string, so we must not string-split it.
+// Date.getDay() converts to local time automatically, which is what we want.
+const getWeekdayFromTimeValue = (timeValue) => {
+  if (!timeValue) return null;
+  const date = new Date(timeValue);
+  if (isNaN(date)) return null;
   const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   return weekdays[date.getDay()];
+};
+
+// Helper: normalize an event's weight field to a numeric kg value.
+// Waste events (see WasteSegregation.js) expose the value as `weight`,
+// which may already be a number or a string like "0.11 kg". There is no
+// `weight_kg` field on these events — that was a leftover from an older shape.
+const getEventWeightKg = (event) => {
+  const raw = event.weight ?? 0;
+  const numeric = typeof raw === 'number'
+    ? raw
+    : parseFloat(String(raw).replace(/[^\d.-]/g, ''));
+  return isNaN(numeric) ? 0 : numeric;
 };
 
 const DashboardOverview = () => {
@@ -70,15 +85,10 @@ const DashboardOverview = () => {
     const weightMap = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0 };
 
     wasteEvents.forEach(event => {
-      // Extract date part from time string (e.g., "2026-05-28 07:33:33" -> "2026-05-28")
-      const timeStr = event.time || event.detected_at;
-      if (!timeStr) return;
-      const datePart = timeStr.split(' ')[0]; // "YYYY-MM-DD"
-      const weekday = getWeekdayFromDateString(datePart);
-      const weight = event.weight_kg ?? 0;
-      if (weightMap.hasOwnProperty(weekday)) {
-        weightMap[weekday] += weight;
-      }
+      // `time` is the real field on waste events (row.time in WasteSegregation.js).
+      const weekday = getWeekdayFromTimeValue(event.time);
+      if (!weekday || !weightMap.hasOwnProperty(weekday)) return;
+      weightMap[weekday] += getEventWeightKg(event);
     });
 
     // Round to 2 decimals

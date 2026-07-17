@@ -1,9 +1,20 @@
 // WasteSegregation.js — uses shared EbinContext (no duplicate API calls)
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useCallback } from "react";
 import "./WasteSegregation.css";
 import { useEbin } from '../EbinContext';
 
 const WASTE_TYPES = ["Recyclable", "Biodegradable", "Non-Biodegradable"];
+
+// Row-level weight coming from EbinContext may be a plain number (kg)
+// or a string like "0.11 kg". Normalize either to a grams display string.
+const formatWeightGrams = (weight) => {
+  if (weight === null || weight === undefined || weight === "") return "—";
+  const numeric = typeof weight === "number"
+    ? weight
+    : parseFloat(String(weight).replace(/[^\d.-]/g, ""));
+  if (isNaN(numeric)) return weight; // fallback: show raw value if unparseable
+  return `${(numeric * 1000).toFixed(0)} g`;
+};
 
 const formatTime = (iso) => {
   if (!iso) return "—";
@@ -31,11 +42,24 @@ const ResultBadge = ({ result }) => (
 const WasteSegregation = () => {
   const { wasteEvents, stats, loadingEvents, errorEvents, refreshAll, lastSync } = useEbin();
   const [filter, setFilter] = useState("All");
+  const [refreshing, setRefreshing] = useState(false);
 
   const filtered = useMemo(
     () => filter === "All" ? wasteEvents : wasteEvents.filter(e => e.type === filter),
     [wasteEvents, filter]
   );
+
+  const handleRefresh = useCallback(async () => {
+    if (refreshing) return; // avoid overlapping refresh calls
+    setRefreshing(true);
+    try {
+      await refreshAll();
+    } catch (err) {
+      console.error("Refresh failed:", err);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshAll, refreshing]);
 
   if (loadingEvents && wasteEvents.length === 0) {
     return (
@@ -68,8 +92,13 @@ const WasteSegregation = () => {
             </p>
           )}
         </div>
-        <button onClick={refreshAll} className="ws-refresh-btn" title="Refresh data">
-          🔄 Refresh
+        <button
+          onClick={handleRefresh}
+          className="ws-refresh-btn"
+          title="Refresh data"
+          disabled={refreshing}
+        >
+          {refreshing ? "🔄 Refreshing..." : "🔄 Refresh"}
         </button>
       </div>
 
@@ -159,7 +188,7 @@ const WasteSegregation = () => {
                     <td className="ws-muted ws-mono">{formatTime(row.time)}</td>
                     <td style={{ fontWeight: 500 }}>{row.bin}</td>
                     <td><TypeBadge type={row.type} /></td>
-                    <td className="ws-muted">{row.weight}</td>
+                    <td className="ws-muted">{formatWeightGrams(row.weight)}</td>
                     <td><ResultBadge result={row.result} /></td>
                   </tr>
                 ))
