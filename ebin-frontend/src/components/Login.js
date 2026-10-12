@@ -15,37 +15,36 @@ const Login = ({ onLogin }) => {
     username: '',
     password: ''
   });
-  
+
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  // In your Login.js handleSubmit function
-const handleSubmit = async (e) => {
-  e.preventDefault();
-  
-  try {
-    const response = await axios.post(`${API_URL}/login`, {
-      username: credentials.username.trim(),
-      password: credentials.password
-    });
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
 
-    console.log('Login response:', response.data); // Debug
+    try {
+      const response = await axios.post(`${API_URL}/login`, {
+        username: credentials.username.trim(),
+        password: credentials.password
+      });
 
-    if (response.data.token) {
-      // IMPORTANT: Save token to localStorage
-      localStorage.setItem('token', response.data.token);
-      localStorage.setItem('user', JSON.stringify(response.data.user));
-      
-      console.log('Token saved:', localStorage.getItem('token')); // Debug
-      
-      // Call parent callback
-      onLogin(response.data.user, response.data.token);
+      if (response.data.token) {
+        localStorage.setItem('token', response.data.token);
+        localStorage.setItem('user', JSON.stringify(response.data.user));
+        onLogin(response.data.user, response.data.token);
+      }
+    } catch (err) {
+      console.error('Login error:', err);
+      setError(
+        err.response?.data?.message || 'Login failed. Please check your credentials.'
+      );
+    } finally {
+      setLoading(false);
     }
-  } catch (err) {
-    console.error('Login error:', err);
-  }
-};
+  };
 
   return (
     <div className="login-page">
@@ -126,18 +125,6 @@ const handleSubmit = async (e) => {
         </form>
 
         <div className="bottom-links">
-          <p>
-            Don't have an account?{' '}
-            <span
-              className="link-text"
-              onClick={() => {
-                window.location.href = '/register';
-              }}
-            >
-              Create one
-            </span>
-          </p>
-
           <p>
             Forgot password?{' '}
             <span

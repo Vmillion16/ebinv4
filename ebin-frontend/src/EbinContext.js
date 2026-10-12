@@ -2,6 +2,12 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import API_URL from './config';
 
+// How many recent waste events to request from the API
+const EVENTS_LIMIT = 100;
+
+// localStorage key: { [binName]: ISO timestamp of when the bin was last emptied }
+const EMPTIED_KEY = 'ebin_emptied_at';
+
 const EbinContext = createContext(null);
 
 export const useEbin = () => {
@@ -10,10 +16,27 @@ export const useEbin = () => {
   return ctx;
 };
 
+// Accepts a number (kg) or a string like "0.11 kg" and returns kg as a number
+const parseWeightKg = (weight) => {
+  if (typeof weight === 'number') return Number.isFinite(weight) ? weight : 0;
+  const n = parseFloat(String(weight ?? '0').replace(/[^\d.]/g, ''));
+  return Number.isFinite(n) ? n : 0;
+};
+
+const loadEmptiedAt = () => {
+  try {
+    const raw = localStorage.getItem(EMPTIED_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+};
+
 export const EbinProvider = ({ children }) => {
   const [bins, setBins]                   = useState([]);
   const [wasteEvents, setWasteEvents]     = useState([]);
-  const [clearedTypes, setClearedTypes]   = useState(new Set()); // ← tracks emptied bin types
+  const [clearedTypes, setClearedTypes]   = useState(new Set()); // tracks emptied bin types
+  const [emptiedAt, setEmptiedAt]         = useState(loadEmptiedAt); // per-bin "last emptied" time
   const [loadingBins, setLoadingBins]     = useState(true);
   const [loadingEvents, setLoadingEvents] = useState(true);
   const [errorBins, setErrorBins]         = useState(null);
@@ -54,7 +77,7 @@ export const EbinProvider = ({ children }) => {
     try {
       setLoadingEvents(true);
       setErrorEvents(null);
-      const res = await fetch(`${API_URL}/waste-events/public/latest`);
+      const res = await fetch(`${API_URL}/waste-events/public/latest?limit=${EVENTS_LIMIT}`);
       if (!res.ok) throw new Error(`Events fetch failed: ${res.status}`);
       const data = await res.json();
 
@@ -66,7 +89,7 @@ export const EbinProvider = ({ children }) => {
         item:      e.item  || '—',
         weight:    e.weight,
         result:    e.result,
-        weight_kg: parseFloat((e.weight || '0').replace(/[^\d.]/g, '')) || 0,
+        weight_kg: parseWeightKg(e.weight),
       }));
 
       setWasteEvents(transformed);
@@ -89,11 +112,24 @@ export const EbinProvider = ({ children }) => {
     setClearedTypes(new Set());
   }, []);
 
-  // ── Refresh both ───────────────────────────────────────────
-  const refreshAll = useCallback(() => {
-    fetchBins();
-    fetchWasteEvents();
-  }, [fetchBins, fetchWasteEvents]);
+  // ── Mark a bin as emptied: history is kept, fill level restarts from now ──
+  const markBinEmptied = useCallback((binName) => {
+    setEmptiedAt(prev => {
+      const next = { ...prev, [binName]: new Date().toISOString() };
+      try {
+        localStorage.setItem(EMPTIED_KEY, JSON.stringify(next));
+      } catch (err) {
+        console.warn('Could not persist emptied-at times:', err);
+      }
+      return next;
+    });
+  }, []);
+
+  // ── Refresh both (returns a promise so callers can await it) ──
+  const refreshAll = useCallback(
+    () => Promise.all([fetchBins(), fetchWasteEvents()]),
+    [fetchBins, fetchWasteEvents]
+  );
 
   // ── Initial load + polling ─────────────────────────────────
   useEffect(() => {
@@ -131,7 +167,7 @@ export const EbinProvider = ({ children }) => {
   return (
     <EbinContext.Provider value={{
       bins,
-      wasteEvents:      visibleWasteEvents, // ← always filtered
+      wasteEvents:      visibleWasteEvents, // always filtered
       loadingBins,
       loadingEvents,
       errorBins,
@@ -141,6 +177,8 @@ export const EbinProvider = ({ children }) => {
       fetchWasteEvents,
       clearEventsForBin,
       resetClearedTypes,
+      emptiedAt,
+      markBinEmptied,
       stats,
       lastSync,
     }}>

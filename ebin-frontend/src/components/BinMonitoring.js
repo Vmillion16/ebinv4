@@ -3,13 +3,15 @@ import React, { useMemo, useState, useEffect } from 'react';
 import './BinMonitoring.css';
 import { useEbin } from '../EbinContext';
 import { io } from 'socket.io-client';
+import {
+  BASE_URL,
 
-const BASE_URL   = "https://ebinv4-1.onrender.com";
+  computeFillPct,
+  getWeightPerBin,
+  useThresholds,
+} from '../utils/binFill';
+
 const SENSOR_URL = `${BASE_URL}/api/esp32/sensors/update`;
-
-// Physical bin capacity: 10kg / 100 liters. Fill level is now derived directly
-// from the actual accumulated waste weight (kg) for that bin, not item count.
-const MAX_BIN_CAPACITY_KG = 10;
 
 const socket = io(BASE_URL, {
   transports: ['websocket', 'polling'],
@@ -48,34 +50,22 @@ const getBinTypeKey = (type) => {
   return 'non_biodegradable';
 };
 
-// Convert accumulated waste weight (kg) into a fill percentage against the
-// bin's physical capacity (10kg / 100L). Clamped to [0, 100].
-const computeFillPctFromWeight = (weightKg) => {
-  const pct = (weightKg / MAX_BIN_CAPACITY_KG) * 100;
-  return Math.min(Math.max(Math.round(pct), 0), 100);
-};
-
 // ── Empty Bin confirmation modal ──────────────────────────────
 const EmptyConfirmModal = ({ bin, onConfirm, onCancel, loading }) => (
   <div className="modal-overlay">
     <div className="modal-box">
       <div className="modal-icon">🗑️</div>
-      <h3 className="modal-title">Mark Bin as Emptied?</h3>
+      <h3 className="modal-title">Empty This Bin?</h3>
       <p className="modal-desc">
-        This will <strong>PERMANENTLY DELETE</strong> all waste history and reset{' '}
-        <strong>{bin.bin_name}</strong> ({getFullTypeName(bin.bin_type)}) fill level back to{' '}
-        <strong>0%</strong>.
-      </p>
-      <p className="modal-warning">
-        ⚠️ This action cannot be undone! All waste events and collection logs for this bin will be
-        permanently deleted.
+        This will mark <strong>{bin.bin_name}</strong> ({getFullTypeName(bin.bin_type)}) as emptied
+        and reset its fill level back to <strong>0%</strong>.
       </p>
       <div className="modal-actions">
         <button className="modal-btn modal-btn-cancel" onClick={onCancel} disabled={loading}>
           Cancel
         </button>
         <button className="modal-btn modal-btn-confirm" onClick={onConfirm} disabled={loading}>
-          {loading ? 'Deleting & Resetting...' : '🗑️ Yes, Delete History & Empty'}
+          {loading ? 'Emptying...' : 'Yes, Empty Bin'}
         </button>
       </div>
     </div>
@@ -84,13 +74,19 @@ const EmptyConfirmModal = ({ bin, onConfirm, onCancel, loading }) => (
 
 // ── Individual bin row (fill level = weight based, capacity is 10kg / 100L) ──
 const BinRow = ({ bin, totalWeight, thresholds, onEmptyClick }) => {
-  // Fill percentage is now computed from the bin's actual accumulated waste
-  // weight (kg), scaled against the physical capacity of 10kg (≈100 liters).
-  // This replaces the old item-count based estimate (+10% per detection),
-  // which drifted from reality whenever items had very different weights.
-  const fillPct = computeFillPctFromWeight(totalWeight);
+  // Fill % = accumulated waste weight (kg) / physical capacity (10kg ≈ 100L).
+  // Shared with the Dashboard Overview through utils/binFill.js.
+  const fillPct = computeFillPct(totalWeight);
   const typeColor = getTypeColor(bin.bin_type);
   const isFull = fillPct >= thresholds.full;
+
+  // Status badge follows the computed fill, so it matches the Overview
+  const displayStatus =
+    String(bin.status).toUpperCase() === 'MAINTENANCE'
+      ? 'MAINTENANCE'
+      : isFull
+        ? 'FULL'
+        : (bin.status || 'ACTIVE');
 
   return (
     <tr className="bin-row">
@@ -123,8 +119,8 @@ const BinRow = ({ bin, totalWeight, thresholds, onEmptyClick }) => {
         </div>
       </td>
       <td>
-        <span className={`status-badge ${getStatusClass(bin.status)}`}>
-          {bin.status || 'ACTIVE'}
+        <span className={`status-badge ${getStatusClass(displayStatus)}`}>
+          {displayStatus}
         </span>
       </td>
       <td>
@@ -134,9 +130,9 @@ const BinRow = ({ bin, totalWeight, thresholds, onEmptyClick }) => {
         <button
           className={`empty-bin-btn ${isFull ? 'empty-bin-btn-urgent' : ''}`}
           onClick={() => onEmptyClick(bin)}
-          title="Permanently delete all waste history and reset bin fill level to 0%"
+          title="Mark this bin as emptied and reset its fill level to 0%"
         >
-          {isFull ? '🚨 Empty & Delete History' : '🗑️ Delete History & Empty'}
+          Empty Bin
         </button>
       </td>
     </tr>
@@ -150,9 +146,9 @@ const StatsCard = ({ bins, stats }) => (
       <div className="stat-value">{stats.totalBins}</div>
       <div className="stat-label">Total Bins</div>
       <div className="stat-breakdown">
-        <span className="stat-bio">🌱 {bins.filter(b => b.bin_type === 'Biodegradable').length} Biodegradable</span>
-        <span className="stat-recycle">♻️ {bins.filter(b => b.bin_type === 'Recyclable').length} Recyclable</span>
-        <span className="stat-nonbio">🗑️ {bins.filter(b => b.bin_type === 'Non-Biodegradable').length} Non-Biodegradable</span>
+        <span className="stat-bio"> {bins.filter(b => b.bin_type === 'Biodegradable').length} Biodegradable</span>
+        <span className="stat-recycle"> {bins.filter(b => b.bin_type === 'Recyclable').length} Recyclable</span>
+        <span className="stat-nonbio">{bins.filter(b => b.bin_type === 'Non-Biodegradable').length} Non-Biodegradable</span>
       </div>
     </div>
 
@@ -178,59 +174,29 @@ const BinMonitoring = () => {
     bins, wasteEvents, stats, loadingBins, errorBins,
     refreshAll,
     resetClearedTypes,
+    emptiedAt,
+    markBinEmptied,
   } = useEbin();
 
   const [confirmBin,  setConfirmBin]  = useState(null);
   const [resetting,   setResetting]   = useState(false);
   const [resetResult, setResetResult] = useState(null);
-  const [thresholds,  setThresholds]  = useState({
-    nearFull: 75,
-    full:     90,
-    overflow: 95,
-  });
 
-  // ── Compute total weight per bin directly from wasteEvents — this now
-  // drives the fill % as well as the displayed weight, since fill level is
-  // weight-based against the 10kg / 100L physical capacity. ──
-  const totalWeightPerBin = useMemo(() => {
-    const map = new Map();
-    wasteEvents.forEach(event => {
-      const binName = event.bin;
-      const weight = event.weight_kg ?? 0;
-      map.set(binName, (map.get(binName) || 0) + weight);
-    });
-    return map;
-  }, [wasteEvents]);
+  // Thresholds from /api/settings (shared with the Dashboard Overview)
+  const thresholds = useThresholds();
+
+  // Total weight per bin, summed from waste events (shared helper)
+  const totalWeightPerBin = useMemo(
+    () => getWeightPerBin(wasteEvents, emptiedAt),
+    [wasteEvents, emptiedAt]
+  );
 
   const sortedBins = useMemo(() => [...bins].sort((a, b) => {
     const order = { Biodegradable: 1, Recyclable: 2, 'Non-Biodegradable': 3 };
     return (order[a.bin_type] || 99) - (order[b.bin_type] || 99);
   }), [bins]);
 
-  // Fetch thresholds from backend settings
-  useEffect(() => {
-    const fetchThresholds = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        const res   = await fetch(`${BASE_URL}/api/settings`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setThresholds({
-            nearFull: data.nearFullThreshold ?? 75,
-            full:     data.fullThreshold     ?? 90,
-            overflow: data.overflowThreshold ?? 95,
-          });
-        }
-      } catch (err) {
-        console.error('Failed to load thresholds', err);
-      }
-    };
-    fetchThresholds();
-  }, []);
-
-  // Socket real‑time updates
+  // Socket real-time updates
   useEffect(() => {
     socket.on('bin-updated', async (data) => {
       console.log('📡 Real-time bin update received:', data);
@@ -241,6 +207,9 @@ const BinMonitoring = () => {
         });
         await refreshAll();
         setTimeout(() => setResetResult(null), 3000);
+      } else {
+        // Any other update (new detection, sensor reading, etc.): refresh quietly
+        await refreshAll();
       }
     });
     return () => { socket.off('bin-updated'); };
@@ -253,22 +222,16 @@ const BinMonitoring = () => {
     try {
       const token = localStorage.getItem('token');
 
-      const deleteHistoryRes = await fetch(`${BASE_URL}/api/bins/${confirmBin._id}/clear-history`, {
-        method:  'DELETE',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      });
-      if (!deleteHistoryRes.ok) {
-        const errorData = await deleteHistoryRes.json();
-        throw new Error(errorData.error || 'Failed to delete bin history');
-      }
-      const deleteResult = await deleteHistoryRes.json();
-
+      // Reset the bin's fill level (waste history is kept)
       const resetRes = await fetch(`${BASE_URL}/api/bins/${confirmBin._id}/reset`, {
         method:  'PUT',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       });
-      if (!resetRes.ok) throw new Error('Failed to reset bin fill level');
+      if (!resetRes.ok) throw new Error('Failed to empty bin');
       await resetRes.json();
+
+      // Fill level restarts from now; existing waste events stay in the log
+      markBinEmptied(confirmBin.bin_name);
 
       await fetch(SENSOR_URL, {
         method:  'POST',
@@ -283,7 +246,7 @@ const BinMonitoring = () => {
 
       setResetResult({
         success: true,
-        message: `✅ ${confirmBin.bin_name} emptied and ALL waste history permanently deleted! ${deleteResult.deletedEvents || 0} events removed.`,
+        message: `✅ ${confirmBin.bin_name} has been emptied.`,
       });
 
       await refreshAll();
@@ -383,11 +346,7 @@ const BinMonitoring = () => {
           </table>
         </div>
 
-        <p className="table-note">
-          💡 Fill levels are weight-based: each bin holds up to <strong>{MAX_BIN_CAPACITY_KG}kg (≈100 liters)</strong>,
-          and the percentage shown is the bin's accumulated waste weight divided by that capacity.<br />
-          🗑️ Press <strong>"Delete History & Empty"</strong> to permanently delete all waste records and reset the bin to 0%.
-        </p>
+      
       </div>
     </div>
   );

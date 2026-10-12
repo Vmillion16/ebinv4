@@ -7,7 +7,6 @@ import WasteSegregation from './WasteSegregation';
 import Reports from './Reports';
 import Settings from './Settings';
 import CollectionReward from './CollectionReward';
-import Maintenance from './Maintenance';
 import API_URL from '../config';
 
 const Dashboard = ({ user, onLogout }) => {
@@ -23,22 +22,20 @@ const Dashboard = ({ user, onLogout }) => {
   const fetchDashboard = async () => {
     try {
       setDashboardLoading(true);
-      
-      // Use public dashboard endpoint - no authentication needed!
+
       const response = await fetch(`${API_URL}/bins/public/dashboard`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
         },
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         console.log('Dashboard data fetched successfully:', data);
         setDashboardData(data);
       } else {
         console.error('Failed to fetch dashboard data:', response.status);
-        // Fallback to empty data structure
         setDashboardData({
           bins: [],
           wasteLast7Days: [],
@@ -65,15 +62,14 @@ const Dashboard = ({ user, onLogout }) => {
   const fetchBins = async () => {
     try {
       setBinsLoading(true);
-      
-      // Use public dashboard endpoint to get bin data
+
       const response = await fetch(`${API_URL}/bins/public/dashboard`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
         },
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         console.log('Bins data fetched successfully:', data.bins);
@@ -150,9 +146,6 @@ const Dashboard = ({ user, onLogout }) => {
 
       case 'collectionreward':
         return <CollectionReward />;
-
-      case 'maintenance':
-        return <Maintenance />;
 
       default:
         return <DashboardOverview data={dashboardData} />;

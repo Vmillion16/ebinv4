@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
-import Register from './components/Register';
 import ForgotPassword from './components/ForgotPassword';
 import UserManagement from './components/Usermanagement';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
@@ -48,17 +47,6 @@ function App() {
               element={
                 !isAuthenticated ? (
                   <Login onLogin={handleLogin} />
-                ) : (
-                  <Navigate to="/dashboard" />
-                )
-              }
-            />
-
-            <Route
-              path="/register"
-              element={
-                !isAuthenticated ? (
-                  <Register />
                 ) : (
                   <Navigate to="/dashboard" />
                 )

@@ -1,23 +1,28 @@
-// DashboardOverview.js — fixed weekly trend (matches real wasteEvent fields: `time`, `weight`)
-import React, { useMemo } from 'react';
+// DashboardOverview.js
+import React, { useMemo, useEffect } from 'react';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis,
   CartesianGrid, Tooltip,
 } from 'recharts';
+import { io } from 'socket.io-client';
 import './DashboardOverview.css';
 import { useEbin } from '../EbinContext';
+import {
+  BASE_URL,
+  computeFillPct,
+  getWeightPerBin,
+  getEventWeightKg,
+  useThresholds,
+} from '../utils/binFill';
+
+// Fallback polling in case the socket misses an update. Set to 0 to disable.
+const AUTO_REFRESH_MS = 30000;
 
 const COLORS = {
   full:     '#E24B4A',
   nearFull: '#F59E0B',
   active:   '#1D9E75',
   maint:    '#6b7280',
-};
-
-const getBinStatus = (fillLevel) => {
-  if (fillLevel >= 90) return 'Full';
-  if (fillLevel >= 75) return 'Near Full';
-  return 'Active';
 };
 
 const getStatusColor = (status) => {
@@ -27,17 +32,17 @@ const getStatusColor = (status) => {
   return COLORS.active;
 };
 
-const getFillBarColor = (fill) => {
-  if (fill >= 90) return COLORS.full;
-  if (fill >= 75) return COLORS.nearFull;
+const getFillBarColor = (fill, t) => {
+  if (fill >= t.full)     return COLORS.full;
+  if (fill >= t.nearFull) return COLORS.nearFull;
   return COLORS.active;
 };
 
-const getFillLabel = (fill) => {
-  if (fill >= 90) return { text: 'CRITICAL', color: COLORS.full };
-  if (fill >= 75) return { text: 'HIGH',     color: COLORS.nearFull };
-  if (fill >= 51) return { text: 'MEDIUM',   color: '#3b82f6' };
-  return                  { text: 'LOW',      color: COLORS.active };
+const getFillLabel = (fill, t) => {
+  if (fill >= t.full)     return { text: 'CRITICAL', color: COLORS.full };
+  if (fill >= t.nearFull) return { text: 'HIGH',     color: COLORS.nearFull };
+  if (fill >= 51)         return { text: 'MEDIUM',   color: '#3b82f6' };
+  return                         { text: 'LOW',      color: COLORS.active };
 };
 
 const CustomAreaTooltip = ({ active, payload, label }) => {
@@ -50,62 +55,111 @@ const CustomAreaTooltip = ({ active, payload, label }) => {
   );
 };
 
-// Helper: get weekday name (Mon, Tue, ...) from a waste event's `time` value.
-// WasteSegregation.js shows `row.time` is a raw date/ISO value that gets fed
-// straight into `new Date(iso)` (see formatTime there) — it is NOT a
-// pre-formatted "YYYY-MM-DD HH:MM:SS" string, so we must not string-split it.
-// Date.getDay() converts to local time automatically, which is what we want.
-const getWeekdayFromTimeValue = (timeValue) => {
-  if (!timeValue) return null;
-  const date = new Date(timeValue);
-  if (isNaN(date)) return null;
-  const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  return weekdays[date.getDay()];
-};
+// ─── Date helpers (local time, no UTC shift) ────────────────
+const pad = (n) => String(n).padStart(2, '0');
+const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
-// Helper: normalize an event's weight field to a numeric kg value.
-// Waste events (see WasteSegregation.js) expose the value as `weight`,
-// which may already be a number or a string like "0.11 kg". There is no
-// `weight_kg` field on these events — that was a leftover from an older shape.
-const getEventWeightKg = (event) => {
-  const raw = event.weight ?? 0;
-  const numeric = typeof raw === 'number'
-    ? raw
-    : parseFloat(String(raw).replace(/[^\d.-]/g, ''));
-  return isNaN(numeric) ? 0 : numeric;
+const getEventDate = (event) => {
+  let raw = event.time ?? event.detected_at ?? event.detectedAt ?? event.timestamp ?? event.createdAt;
+  if (!raw) return null;
+  if (typeof raw === 'string' && /^\d{4}-\d{2}-\d{2} \d/.test(raw)) {
+    raw = raw.replace(' ', 'T');
+  }
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d;
 };
 
 const DashboardOverview = () => {
-  const { bins, wasteEvents, stats, loadingBins, refreshAll, lastSync } = useEbin();
+  const { bins = [], wasteEvents = [], stats = {}, loadingBins, refreshAll, lastSync } = useEbin();
+  const thresholds = useThresholds();
 
-  // Trend: last 7 days based on actual waste events, grouped by weekday (local date)
+  // Real-time: refresh whenever the server pushes a bin update
+  useEffect(() => {
+    const socket = io(BASE_URL, {
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+    });
+    socket.on('bin-updated', () => refreshAll && refreshAll());
+    return () => {
+      socket.off('bin-updated');
+      socket.disconnect();
+    };
+  }, [refreshAll]);
+
+  // Fallback auto-refresh
+  useEffect(() => {
+    if (!AUTO_REFRESH_MS || !refreshAll) return;
+    const id = setInterval(() => refreshAll(), AUTO_REFRESH_MS);
+    return () => clearInterval(id);
+  }, [refreshAll]);
+
+  // Fill level per bin: same math as Bin Monitoring
+  // (sum of waste event weights for that bin / 10kg)
+  const weightPerBin = useMemo(() => getWeightPerBin(wasteEvents), [wasteEvents]);
+
+  const binsWithFill = useMemo(
+    () =>
+      bins.map((b) => {
+        const weight = weightPerBin.get(b.bin_name) || 0;
+        const fill = computeFillPct(weight);
+        let status = 'Active';
+        if (String(b.status).toUpperCase() === 'MAINTENANCE') status = 'Maintenance';
+        else if (fill >= thresholds.full) status = 'Full';
+        else if (fill >= thresholds.nearFull) status = 'Near Full';
+        return { ...b, weight, fill, status };
+      }),
+    [bins, weightPerBin, thresholds]
+  );
+
+  // Summary cards. Full / Near Full use the same thresholds as Bin Monitoring.
+  const summary = useMemo(
+    () => ({
+      totalBins: binsWithFill.length,
+      fullBins: binsWithFill.filter((b) => b.fill >= thresholds.full).length,
+      nearFullBins: binsWithFill.filter(
+        (b) => b.fill >= thresholds.nearFull && b.fill < thresholds.full
+      ).length,
+    }),
+    [binsWithFill, thresholds]
+  );
+
+  // Detections + total weight come from the same context stats Bin Monitoring uses
+  const totalEvents = stats.totalEvents ?? wasteEvents.length;
+  const totalWeight = stats.totalEventsWeight ?? 0;
+
+  // Trend: last 7 calendar days (local time)
   const trend = useMemo(() => {
-    // Initialize map for Monday to Sunday
-    const dayOrder = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const weightMap = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0 };
+    const today = new Date();
+    const days = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
+      days.push({
+        key: ymd(d),
+        day: d.toLocaleDateString('en-US', { weekday: 'short' }),
+        kg: 0,
+      });
+    }
+    const byKey = new Map(days.map((d) => [d.key, d]));
 
-    wasteEvents.forEach(event => {
-      // `time` is the real field on waste events (row.time in WasteSegregation.js).
-      const weekday = getWeekdayFromTimeValue(event.time);
-      if (!weekday || !weightMap.hasOwnProperty(weekday)) return;
-      weightMap[weekday] += getEventWeightKg(event);
+    wasteEvents.forEach((event) => {
+      const date = getEventDate(event);
+      if (!date) return;
+      const row = byKey.get(ymd(date));
+      if (row) row.kg += getEventWeightKg(event);
     });
 
-    // Round to 2 decimals
-    Object.keys(weightMap).forEach(day => {
-      weightMap[day] = parseFloat(weightMap[day].toFixed(2));
-    });
-
-    // Return array in Monday–Sunday order
-    return dayOrder.map(day => ({ day, kg: weightMap[day] }));
+    return days.map((d) => ({ day: d.day, kg: Math.round(d.kg * 100) / 100 }));
   }, [wasteEvents]);
 
-  // Compute priority bins directly (fillLevel >= 75)
-  const priorityBins = useMemo(() => {
-    return [...bins]
-      .filter(b => (b.fillLevel ?? 0) >= 75)
-      .sort((a, b) => (b.fillLevel ?? 0) - (a.fillLevel ?? 0));
-  }, [bins]);
+  const priorityBins = useMemo(
+    () =>
+      binsWithFill
+        .filter((b) => b.fill >= thresholds.nearFull)
+        .sort((a, b) => b.fill - a.fill),
+    [binsWithFill, thresholds]
+  );
 
   if (loadingBins && bins.length === 0) {
     return (
@@ -141,30 +195,30 @@ const DashboardOverview = () => {
       {/* Summary cards */}
       <div className="do-summary-row">
         <div className="do-summary-card">
-          <span className="do-summary-number">{stats.totalBins}</span>
+          <span className="do-summary-number">{summary.totalBins}</span>
           <span className="do-summary-label">Total Bins</span>
         </div>
         <div className="do-summary-card" style={{ borderColor: COLORS.full }}>
-          <span className="do-summary-number" style={{ color: COLORS.full }}>{stats.fullBins}</span>
+          <span className="do-summary-number" style={{ color: COLORS.full }}>{summary.fullBins}</span>
           <span className="do-summary-label">Full Bins</span>
         </div>
         <div className="do-summary-card" style={{ borderColor: COLORS.nearFull }}>
-          <span className="do-summary-number" style={{ color: COLORS.nearFull }}>{stats.nearFullBins}</span>
+          <span className="do-summary-number" style={{ color: COLORS.nearFull }}>{summary.nearFullBins}</span>
           <span className="do-summary-label">Near Full</span>
         </div>
         <div className="do-summary-card">
-          <span className="do-summary-number">{stats.totalEvents}</span>
+          <span className="do-summary-number">{totalEvents}</span>
           <span className="do-summary-label">Total Detections</span>
         </div>
         <div className="do-summary-card">
-          <span className="do-summary-number">{stats.totalEventsWeight.toFixed(2)} kg</span>
+          <span className="do-summary-number">{Number(totalWeight).toFixed(2)} kg</span>
           <span className="do-summary-label">Total Waste Weight</span>
         </div>
       </div>
 
-      {/* Weekly trend chart - fixed local date grouping */}
+      {/* Weekly trend chart */}
       <div className="do-card do-card-full">
-        <p className="do-card-title">Weekly waste trend (based on actual waste events)</p>
+        <p className="do-card-title">Last 7 days waste trend</p>
         <ResponsiveContainer width="100%" height={200}>
           <AreaChart data={trend} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
             <defs>
@@ -188,9 +242,6 @@ const DashboardOverview = () => {
             />
           </AreaChart>
         </ResponsiveContainer>
-        <p className="do-note" style={{ fontSize: 12, color: '#6b7280', marginTop: 8 }}>
-          💡 Aggregates waste weight by day of week (Monday–Sunday) using the local date from each waste event.
-        </p>
       </div>
 
       {/* Priority bins section */}
@@ -203,24 +254,23 @@ const DashboardOverview = () => {
           }
         </div>
 
-        {bins.length === 0 ? (
+        {binsWithFill.length === 0 ? (
           <div className="do-all-ok"><p>No bins data available</p></div>
         ) : (
           <div className="do-all-ok">
             {priorityBins.length === 0 && <span className="do-ok-icon">✓</span>}
             <p>
               {priorityBins.length === 0
-                ? 'No bins require immediate collection (threshold: 75%)'
+                ? `No bins require immediate collection (threshold: ${thresholds.nearFull}%)`
                 : 'Bins that need attention:'}
             </p>
-            {(priorityBins.length > 0 ? priorityBins : bins).map((bin, idx) => {
-              const fill = bin.fillLevel ?? 0;
-              const fillLabel = getFillLabel(fill);
-              const status = bin.status || getBinStatus(fill);
+            {(priorityBins.length > 0 ? priorityBins : binsWithFill).map((bin, idx) => {
+              const fillLabel = getFillLabel(bin.fill, thresholds);
+              const barColor = getFillBarColor(bin.fill, thresholds);
               return (
                 <div key={bin._id || idx} className="do-priority-row" style={{ marginTop: '10px' }}>
                   <div className="do-priority-left">
-                    <span className="do-priority-dot" style={{ background: getFillBarColor(fill) }} />
+                    <span className="do-priority-dot" style={{ background: barColor }} />
                     <span className="do-priority-name">{bin.bin_name}</span>
                     <span className="do-priority-type">{bin.bin_type}</span>
                   </div>
@@ -228,21 +278,26 @@ const DashboardOverview = () => {
                     <div className="do-fill-bar-bg">
                       <div
                         className="do-fill-bar-fill"
-                        style={{ width: `${fill}%`, background: getFillBarColor(fill) }}
+                        style={{ width: `${bin.fill}%`, background: barColor }}
                       />
                     </div>
                   </div>
                   <div className="do-priority-right">
-                    <span className="do-fill-pct">{fill}%</span>
+                    <span className="do-fill-pct">
+                      {bin.fill}%
+                      <span style={{ fontSize: 11, color: '#6b7280', marginLeft: 6 }}>
+                        ({bin.weight.toFixed(1)} kg)
+                      </span>
+                    </span>
                     <span
                       className="do-status-tag"
                       style={{
-                        background: `${getStatusColor(status)}18`,
-                        color: getStatusColor(status),
-                        border: `1px solid ${getStatusColor(status)}40`,
+                        background: `${getStatusColor(bin.status)}18`,
+                        color: getStatusColor(bin.status),
+                        border: `1px solid ${getStatusColor(bin.status)}40`,
                       }}
                     >
-                      {status}
+                      {bin.status}
                     </span>
                     <span
                       className="do-status-tag"

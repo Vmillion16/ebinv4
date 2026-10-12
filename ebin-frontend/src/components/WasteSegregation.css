@@ -505,3 +505,59 @@
   border-radius: 6px;
   display: inline-block;
 }
+
+.ws-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px 4px 4px;
+}
+
+.ws-page-info {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.ws-page-controls {
+  display: flex;
+  gap: 6px;
+}
+
+.ws-page-btn {
+  padding: 6px 12px;
+  font-size: 13px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  color: #374151;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.ws-page-btn:hover:not(:disabled) {
+  background: #f3f4f6;
+}
+
+.ws-page-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ws-page-btn-active {
+  background: #1D9E75;
+  border-color: #1D9E75;
+  color: #fff;
+}
+
+.ws-page-btn-active:hover:not(:disabled) {
+  background: #1D9E75;
+}
+.ws-history-toolbar {
+  display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;
+  padding: 12px 16px; border-bottom: 1px solid #f0f0f0;
+}
+.ws-history-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #6b7280; }
+.ws-input { padding: 6px 10px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 13px; background: #fff; }
+.ws-row-emptied { background: #f0fdf4; }
+.badge-emptied { background: #dcfce7; color: #166534; }

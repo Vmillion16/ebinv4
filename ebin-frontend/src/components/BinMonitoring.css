@@ -491,3 +491,24 @@
   margin-top: 12px;
   padding: 0 4px;
 }
+.empty-bin-btn {
+  background: #16a34a;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+.empty-bin-btn:hover { background: #15803d; box-shadow: 0 2px 8px rgba(22, 163, 74, 0.35); }
+.empty-bin-btn:active { background: #166534; }
+.empty-bin-btn:focus-visible { outline: 3px solid rgba(22, 163, 74, 0.4); outline-offset: 2px; }
+.empty-bin-btn:disabled { background: #9ca3af; cursor: not-allowed; box-shadow: none; }
+
+/* Bin is full: stronger green so it stands out */
+.empty-bin-btn-urgent { background: #15803d; box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.25); }
+
+.modal-btn-confirm { background: #16a34a; color: #fff; }
+.modal-btn-confirm:hover:not(:disabled) { background: #15803d; }

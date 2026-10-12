@@ -8,26 +8,24 @@ import {
   FaChartBar,
   FaCog,
   FaSignOutAlt,
-  FaGift,
-  FaWrench
+  FaGift
 } from 'react-icons/fa';
 
 const Sidebar = ({ activeTab, setActiveTab, user, onLogout }) => {
   const [showSidebar, setShowSidebar] = useState(false);
 
   const menuItems = [
-    { id: 'overview',         label: 'Overview',            icon: FaTachometerAlt, path: '/dashboard/overview' },
-    { id: 'bins',             label: 'Bin Monitoring',      icon: FaTrash,         path: '/dashboard/bins' },
-    { id: 'segregation',      label: 'Waste Segregation',   icon: FaRecycle,       path: '/dashboard/segregation' },
-    { id: 'reports',          label: 'Reports',             icon: FaChartBar,      path: '/dashboard/reports' },
-    { id: 'collectionreward', label: 'Collection & Reward', icon: FaGift,          path: '/dashboard/collectionreward' },
-    { id: 'maintenance',      label: 'Maintenance',         icon: FaWrench,        path: '/dashboard/maintenance' },
-    { id: 'settings',         label: 'Settings',            icon: FaCog,           path: '/dashboard/settings' },
+    { id: 'overview',         label: 'Overview',          icon: FaTachometerAlt, path: '/dashboard/overview' },
+    { id: 'bins',             label: 'Bin Monitoring',    icon: FaTrash,         path: '/dashboard/bins' },
+    { id: 'segregation',      label: 'Waste Segregation', icon: FaRecycle,       path: '/dashboard/segregation' },
+    { id: 'reports',          label: 'Reports',           icon: FaChartBar,      path: '/dashboard/reports' },
+    { id: 'collectionreward', label: 'Reward',        icon: FaGift,          path: '/dashboard/collectionreward' },
+    { id: 'settings',         label: 'Settings',          icon: FaCog,           path: '/dashboard/settings' },
   ];
 
   const topItems    = menuItems.slice(0, 3); // Overview, Bin Monitoring, Waste Segregation
-  const middleItems = menuItems.slice(3, 6); // Reports, Collection & Reward, Maintenance
-  const bottomItems = menuItems.slice(6);    // Settings
+  const middleItems = menuItems.slice(3, 5); // Reports, Collection
+  const bottomItems = menuItems.slice(5);    // Settings
 
   useEffect(() => {
     const handleMouseMove = (e) => {

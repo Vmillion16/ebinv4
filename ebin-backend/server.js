@@ -98,6 +98,8 @@ const binSchema = new mongoose.Schema({
   weight_kg:         { type: Number, default: 0 },
   max_capacity:      { type: Number, default: 100 },
   last_updated:      { type: Date, default: Date.now },
+  last_emptied_at:   { type: Date, default: null },
+  last_emptied_by:   { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
 });
 
 // ── Waste Events ────────────────────────────────────────────
@@ -240,6 +242,39 @@ const typeMap = {
   'nonbiodegradable':  'Non-Biodegradable',
 };
 
+// Single source of truth for "a bin was emptied".
+// Resets the bin, stamps last_emptied_at/by, and writes a CollectionLog
+// using the bin's weight *before* the reset.
+async function emptyBin(binId, staffId, opts = {}) {
+  const now = new Date();
+
+  // new:false returns the pre-reset document, so we capture the real weight atomically
+  const before = await Bin.findByIdAndUpdate(binId, {
+    fill_level:      0,
+    weight_kg:       0,
+    status:          'Active',
+    last_updated:    now,
+    last_emptied_at: now,
+    last_emptied_by: staffId,
+  }, { new: false });
+
+  if (!before) return null;
+
+  const log = await CollectionLog.create({
+    bin_id:       before._id,
+    staff_id:     staffId,
+    collected_at: now,
+    waste_type:   before.bin_type,
+    weight_kg:    opts.weight_kg ?? before.weight_kg ?? 0,
+    destination:  opts.destination || 'Recycling Center',
+    status:       opts.status || 'Done',
+    notes:        opts.notes || 'Emptied via dashboard',
+  });
+
+  const bin = await Bin.findById(binId).populate('last_emptied_by', 'full_name username');
+  return { bin, log };
+}
+
 // ─────────────────────────────────────────────────────────────
 // 9. PUBLIC ENDPOINTS
 // ─────────────────────────────────────────────────────────────
@@ -260,7 +295,8 @@ app.get('/api/bins/public/dashboard', async (req, res) => {
         fillLevel: bin.fill_level,
         status:    bin.status,
         location:  bin.location,
-        weight_kg: bin.weight_kg
+        weight_kg: bin.weight_kg,
+        last_emptied_at: bin.last_emptied_at
       })),
       wasteLast7Days: [
         { day: 'Mon', kg: 0 }, { day: 'Tue', kg: 0 }, { day: 'Wed', kg: 0 },
@@ -442,21 +478,10 @@ app.get('/api/collections/:id', async (req, res) => {
 
 app.post('/api/collections', auth, async (req, res) => {
   try {
-    const { bin_id, waste_type, weight_kg, destination, status } = req.body;
-
-    const log = new CollectionLog({
-      bin_id,
-      staff_id:    req.user.userId,
-      waste_type,
-      weight_kg,
-      destination: destination || 'Recycling Center',
-      status:      status || 'Done'
-    });
-
-    await log.save();
-    await Bin.findByIdAndUpdate(bin_id, { fill_level: 0, weight_kg: 0, status: 'Active' });
-
-    res.status(201).json({ success: true, data: log });
+    const { bin_id, weight_kg, destination, status, notes } = req.body;
+    const result = await emptyBin(bin_id, req.user.userId, { weight_kg, destination, status, notes });
+    if (!result) return res.status(404).json({ success: false, error: 'Bin not found' });
+    res.status(201).json({ success: true, data: result.log, bin: mapBin(result.bin) });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -650,33 +675,45 @@ app.get('/api/dashboard', auth, async (req, res) => {
 });
 
 app.get('/api/bins', auth, async (req, res) => {
-  const bins = await Bin.find().sort({ location: 1 });
+  const bins = await Bin.find()
+    .sort({ location: 1 })
+    .populate('last_emptied_by', 'full_name');
   res.json(bins.map(mapBin));
 });
 
 app.get('/api/bins/:id', auth, async (req, res) => {
-  const bin = await Bin.findById(req.params.id);
+  const bin = await Bin.findById(req.params.id).populate('last_emptied_by', 'full_name');
   if (!bin) return res.status(404).json({ error: 'Bin not found' });
   res.json(mapBin(bin));
 });
 
 app.put('/api/bins/:id/reset', auth, async (req, res) => {
-  const bin = await Bin.findByIdAndUpdate(
-    req.params.id,
-    { status: 'Active', fill_level: 0, weight_kg: 0, last_updated: new Date() },
-    { new: true }
-  );
-  
-  const io = req.app.get('io');
-  io.emit('bin-updated', {
-    type: 'RESET',
-    binId: req.params.id,
-    binName: bin.bin_name,
-    bin: mapBin(bin),
-    timestamp: new Date()
-  });
-  
-  res.json({ message: 'Bin reset successfully', bin: mapBin(bin) });
+  try {
+    const result = await emptyBin(req.params.id, req.user.userId, {
+      notes: req.body?.notes,
+    });
+    if (!result) return res.status(404).json({ error: 'Bin not found' });
+
+    const { bin, log } = result;
+
+    req.app.get('io').emit('bin-updated', {
+      type: 'RESET',
+      binId: bin._id,
+      binName: bin.bin_name,
+      bin: mapBin(bin),
+      lastEmptiedAt: bin.last_emptied_at,
+      timestamp: new Date()
+    });
+
+    res.json({
+      message: 'Bin reset successfully',
+      bin: mapBin(bin),
+      collection: { id: log._id, collected_at: log.collected_at, weight_kg: log.weight_kg }
+    });
+  } catch (err) {
+    console.error('❌ reset error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -803,36 +840,23 @@ app.post('/api/esp32/collection/record', async (req, res) => {
       return res.status(404).json({ success: false, error: 'No admin user found for staff_id' });
     }
 
-    const log = new CollectionLog({
-      bin_id:      bin._id,
-      staff_id:    staff._id,
-      waste_type:  mappedType,
-      weight_kg:   weight_kg || 0,
-      status:      'Done',
-      destination: 'Recycling Center',
-      notes:       'Auto-recorded by ESP32'
+    const result = await emptyBin(bin._id, staff._id, {
+      weight_kg: weight_kg || 0,
+      notes: 'Auto-recorded by ESP32',
     });
-    await log.save();
+    if (!result) {
+      return res.status(404).json({ success: false, error: 'Bin not found' });
+    }
+    const { bin: updatedBin, log } = result;
 
-    const updatedBin = await Bin.findByIdAndUpdate(bin._id, {
-      fill_level:   0,
-      weight_kg:    0,
-      status:       'Active',
-      last_updated: new Date()
-    }, { new: true });
-
-    const io = req.app.get('io');
-    io.emit('bin-updated', {
+    req.app.get('io').emit('bin-updated', {
       type: 'COLLECTION_RESET',
       binId: updatedBin._id,
       binName: updatedBin.bin_name,
       bin: {
-        _id: updatedBin._id,
-        bin_name: updatedBin.bin_name,
-        bin_type: updatedBin.bin_type,
-        fillLevel: updatedBin.fill_level,
-        weight_kg: updatedBin.weight_kg,
-        status: updatedBin.status
+        _id: updatedBin._id, bin_name: updatedBin.bin_name, bin_type: updatedBin.bin_type,
+        fillLevel: updatedBin.fill_level, weight_kg: updatedBin.weight_kg, status: updatedBin.status,
+        last_emptied_at: updatedBin.last_emptied_at
       },
       timestamp: new Date()
     });
